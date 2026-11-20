@@ -45,7 +45,7 @@ services:
       timeout: 3s
       retries: 20
 
-  # Portal de alertas e integrações (perfil `portal`): API FastAPI + PostgreSQL. Ative com `obskitpy portal enable`.
+  # Portal de integrações e automações (perfil `portal`): API FastAPI + PostgreSQL. Ative com `obskitpy portal enable`.
   postgres:
     profiles: [portal]
     image: postgres:16-alpine

@@ -12,13 +12,13 @@ from importlib.metadata import PackageNotFoundError, version
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import alerts, providers, schemas
+from . import automations, providers, schemas
 from .db import Base, make_engine, make_session_factory
-from .models import AlertRule, AuditEvent, Contact, ContactGroup, Destination, OAuthApp, Incident, ProviderConnection, User, now
+from .models import (Automation, AutomationRun, AuditEvent, Contact, ContactGroup, Destination, OAuthApp, ProviderConnection, User, now)
 from .security import (LoginLimiter, decrypt_secrets, encrypt_secrets, hash_password, make_state, make_token, read_state,
                        read_token, verify_password)
 from .settings import Settings, load
@@ -49,7 +49,7 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
                 db.add(User(email=settings.admin_email.lower(), name="Administrador", role="admin",
                             password_hash=hash_password(settings.admin_password)))
                 db.commit()
-        worker = asyncio.create_task(alerts.run_forever(sessions, settings.secret_key, settings.es_url, settings.eval_interval)) if settings.es_url else None
+        worker = asyncio.create_task(automations.run_forever(sessions, settings.secret_key, settings.es_url, settings.eval_interval)) if settings.es_url else None
         yield
         if worker:
             worker.cancel()
@@ -383,89 +383,88 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
         db.commit()
         audit(db, actor.email, "destination.delete", "destination", dest_id)
 
-    # ---------- alertas ----------
-    def out_rule(r: AlertRule) -> schemas.RuleOut:
-        return schemas.RuleOut(id=r.id, name=r.name, service=r.service, condition=r.condition, threshold=r.threshold,
-                               window_minutes=r.window_minutes, severity=r.severity, destination_ids=r.destination_ids,
-                               cooldown_minutes=r.cooldown_minutes, enabled=r.enabled, state=r.state, last_value=r.last_value,
-                               last_eval_at=r.last_eval_at, last_error=r.last_error)
+    # ---------- automações ----------
+    def out_auto(a: Automation) -> schemas.AutomationOut:
+        return schemas.AutomationOut(id=a.id, name=a.name, enabled=a.enabled, graph=a.graph, state=a.state or {}, updated_at=a.updated_at or a.created_at)
 
-    def check_rule(db: Session, body: schemas.RuleIn) -> None:
-        if body.condition not in alerts.CONDITIONS:
-            raise HTTPException(422, f"condição desconhecida (use: {', '.join(alerts.CONDITIONS)})")
-        if body.severity not in alerts.SEVERITIES:
-            raise HTTPException(422, f"severidade desconhecida (use: {', '.join(alerts.SEVERITIES)})")
-        if any(not db.get(Destination, i) for i in body.destination_ids):
-            raise HTTPException(422, "destino não encontrado: cadastre o destino (canal, chat ou e-mail) antes de criar o alerta")
+    def clean_graph(db: Session, body: schemas.AutomationIn) -> dict:
+        try:
+            return automations.validate_graph(db, body.graph.model_dump())
+        except ValueError as exc:
+            bad(exc)
 
-    @app.get("/api/v1/alerts/conditions")
-    def alert_conditions(_: User = Depends(current_user)):
-        return {"evaluator": bool(settings.es_url),
-                "conditions": [{"condition": k, "label": v[0], "help": v[1]} for k, v in alerts.CONDITIONS.items()]}
+    @app.get("/api/v1/automations/nodes")
+    def automation_nodes(_: User = Depends(current_user)):
+        return {"evaluator": bool(settings.es_url), "variables": list(automations.VARIABLES), "nodes": automations.catalog()}
 
-    @app.get("/api/v1/alerts", response_model=list[schemas.RuleOut])
-    def list_rules(db: Session = Depends(get_db), _: User = Depends(current_user)):
-        return [out_rule(r) for r in db.scalars(select(AlertRule).order_by(AlertRule.name))]
+    @app.get("/api/v1/automations", response_model=list[schemas.AutomationOut])
+    def list_automations(db: Session = Depends(get_db), _: User = Depends(current_user)):
+        return [out_auto(a) for a in db.scalars(select(Automation).order_by(Automation.name))]
 
-    @app.post("/api/v1/alerts", response_model=schemas.RuleOut, status_code=201)
-    def create_rule(body: schemas.RuleIn, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
-        check_rule(db, body)
-        rule = AlertRule(**{**body.model_dump(), "name": body.name.strip()})
-        db.add(rule)
+    @app.get("/api/v1/automations/runs", response_model=list[schemas.RunOut])
+    def list_runs(limit: int = 50, automation_id: int | None = None, db: Session = Depends(get_db), _: User = Depends(current_user)):
+        q = select(AutomationRun).order_by(AutomationRun.at.desc()).limit(min(max(limit, 1), 200))
+        if automation_id is not None:
+            q = q.where(AutomationRun.automation_id == automation_id)
+        return db.scalars(q).all()
+
+    @app.post("/api/v1/automations", response_model=schemas.AutomationOut, status_code=201)
+    def create_automation(body: schemas.AutomationIn, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
+        auto = Automation(name=body.name.strip(), enabled=body.enabled, graph=clean_graph(db, body), state={})
+        db.add(auto)
         try:
             db.commit()
         except IntegrityError:
-            conflict(db, "um alerta")
-        audit(db, actor.email, "alert.create", "alert", rule.id, condition=rule.condition)
-        return out_rule(rule)
+            conflict(db, "uma automação")
+        audit(db, actor.email, "automation.create", "automation", auto.id)
+        return out_auto(auto)
 
-    @app.put("/api/v1/alerts/{rule_id}", response_model=schemas.RuleOut)
-    def update_rule(rule_id: int, body: schemas.RuleIn, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
-        rule = db.get(AlertRule, rule_id)
-        if not rule:
-            raise HTTPException(404, "alerta não encontrado")
-        check_rule(db, body)
-        for key, val in {**body.model_dump(), "name": body.name.strip()}.items():
-            setattr(rule, key, val)
-        if not rule.enabled:
-            rule.state = "ok"
+    @app.put("/api/v1/automations/{auto_id}", response_model=schemas.AutomationOut)
+    def update_automation(auto_id: int, body: schemas.AutomationIn, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
+        auto = db.get(Automation, auto_id)
+        if not auto:
+            raise HTTPException(404, "automação não encontrada")
+        auto.graph, auto.name, auto.enabled = clean_graph(db, body), body.name.strip(), body.enabled
+        ids = {n["id"] for n in auto.graph["nodes"]}
+        auto.state = {k: v for k, v in (auto.state or {}).items() if k in ids} if auto.enabled else {}
         try:
             db.commit()
         except IntegrityError:
-            conflict(db, "um alerta")
-        audit(db, actor.email, "alert.update", "alert", rule.id)
-        return out_rule(rule)
+            conflict(db, "uma automação")
+        audit(db, actor.email, "automation.update", "automation", auto.id)
+        return out_auto(auto)
 
-    @app.delete("/api/v1/alerts/{rule_id}", status_code=204)
-    def delete_rule(rule_id: int, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
-        rule = db.get(AlertRule, rule_id)
-        if rule:
-            db.delete(rule)
+    @app.delete("/api/v1/automations/{auto_id}", status_code=204)
+    def delete_automation(auto_id: int, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
+        auto = db.get(Automation, auto_id)
+        if auto:
+            db.execute(update(AutomationRun).where(AutomationRun.automation_id == auto_id).values(automation_id=None))  # o histórico fica
+            db.delete(auto)
             db.commit()
-            audit(db, actor.email, "alert.delete", "alert", rule_id)
+            audit(db, actor.email, "automation.delete", "automation", auto_id)
 
-    @app.post("/api/v1/alerts/{rule_id}/test")
-    async def test_rule(rule_id: int, db: Session = Depends(get_db), actor: User = Depends(need("operator"))):
-        """Mede a condição agora e manda uma mensagem de teste aos destinos (não abre incidente)."""
-        rule = db.get(AlertRule, rule_id)
-        if not rule:
-            raise HTTPException(404, "alerta não encontrado")
-        value = None
-        if settings.es_url:
-            try:
-                value = await alerts.measure(settings.es_url, rule)
-            except Exception as exc:
-                raise HTTPException(502, f"não consegui consultar o Elasticsearch ({type(exc).__name__})")
-        now_says = alerts.describe(rule, value) if value is not None else ""
-        msg = providers.Message(f"Teste do alerta: {rule.name}", f"Mensagem de teste: nenhum incidente foi aberto. {now_says}".strip(), rule.severity,
-                                [("Regra", rule.name), ("Serviço", rule.service or "todos")])
-        summary = await alerts.deliver(db, settings.secret_key, rule, msg)
-        audit(db, actor.email, "alert.test", "alert", rule.id)
-        return {"value": value, "would_fire": None if value is None else alerts.breached(rule, value), "sent": summary}
-
-    @app.get("/api/v1/incidents", response_model=list[schemas.IncidentOut])
-    def list_incidents(limit: int = 50, db: Session = Depends(get_db), _: User = Depends(current_user)):
-        return db.scalars(select(Incident).order_by(Incident.opened_at.desc()).limit(min(max(limit, 1), 200))).all()
+    @app.post("/api/v1/automations/{auto_id}/test")
+    async def test_automation(auto_id: int, db: Session = Depends(get_db), actor: User = Depends(need("operator"))):
+        """Roda o fluxo agora (de verdade: os avisos são enviados, marcados com [Teste]) para conferir o caminho e os destinos."""
+        auto = db.get(Automation, auto_id)
+        if not auto:
+            raise HTTPException(404, "automação não encontrada")
+        steps, values = [], {}
+        for node in [n for n in auto.graph["nodes"] if n["type"].startswith("trigger.")]:
+            value = 0
+            if settings.es_url:
+                try:
+                    value = await automations.measure(settings.es_url, node["type"], node["config"])
+                except Exception as exc:
+                    raise HTTPException(502, f"não consegui consultar o Elasticsearch ({type(exc).__name__})")
+            values[node["id"]] = value
+            ctx = automations._context(auto, node, value, "teste")
+            ran = await automations.run_flow(db, settings.secret_key, auto.graph, node["id"], "fired", ctx, test=True)
+            automations._record(db, auto, node, "teste", value, ran)
+            steps += ran
+        db.commit()
+        audit(db, actor.email, "automation.test", "automation", auto.id)
+        return {"steps": steps, "values": values}
 
     # ---------- contatos e grupos ----------
     def out_contact(c: Contact) -> schemas.ContactOut:

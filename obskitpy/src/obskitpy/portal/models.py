@@ -85,38 +85,30 @@ class OAuthApp(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-class AlertRule(Base):
-    """Regra de alerta: uma condição sobre os dados do Elasticsearch, avaliada a cada ciclo, que avisa os destinos escolhidos."""
-    __tablename__ = "alert_rules"
+class Automation(Base):
+    """Fluxo de automação: um grafo de etapas (gatilhos, condições e ações) desenhado no editor do dash."""
+    __tablename__ = "automations"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True)
-    service: Mapped[str] = mapped_column(String(120), default="")          # "" = todos os serviços
-    condition: Mapped[str] = mapped_column(String(30))                      # error_logs | failed_spans | no_data
-    threshold: Mapped[int] = mapped_column(default=1)
-    window_minutes: Mapped[int] = mapped_column(default=5)
-    severity: Mapped[str] = mapped_column(String(20), default="warning")   # info | warning | critical
-    destination_ids: Mapped[list] = mapped_column(JSON, default=list)
-    cooldown_minutes: Mapped[int] = mapped_column(default=30)               # relembra enquanto o problema continua (0 = só avisa uma vez)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    state: Mapped[str] = mapped_column(String(10), default="ok")            # ok | firing
-    last_value: Mapped[int | None] = mapped_column(nullable=True)
-    last_eval_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_error: Mapped[str] = mapped_column(String(500), default="")
+    graph: Mapped[dict] = mapped_column(JSON, default=lambda: {"nodes": [], "edges": []})   # {"nodes": [...], "edges": [...]}
+    state: Mapped[dict] = mapped_column(JSON, default=dict)                                   # estado de cada gatilho (ok/firing, último valor, erro)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 
-class Incident(Base):
-    __tablename__ = "incidents"
+class AutomationRun(Base):
+    """Uma execução do fluxo: o que disparou e o resultado de cada etapa."""
+    __tablename__ = "automation_runs"
     id: Mapped[int] = mapped_column(primary_key=True)
-    rule_id: Mapped[int | None] = mapped_column(ForeignKey("alert_rules.id", ondelete="SET NULL"), nullable=True)
-    rule_name: Mapped[str] = mapped_column(String(120))
-    service: Mapped[str] = mapped_column(String(120), default="")
-    severity: Mapped[str] = mapped_column(String(20), default="warning")
-    value: Mapped[int] = mapped_column(default=0)
-    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    notified: Mapped[str] = mapped_column(String(300), default="")           # resultado do envio (ex.: "2 de 2 destinos")
+    automation_id: Mapped[int | None] = mapped_column(ForeignKey("automations.id", ondelete="SET NULL"), nullable=True)
+    automation_name: Mapped[str] = mapped_column(String(120))
+    trigger: Mapped[str] = mapped_column(String(60), default="")
+    event: Mapped[str] = mapped_column(String(20), default="")      # disparou | lembrete | normalizou | agendado | teste
+    value: Mapped[int | None] = mapped_column(nullable=True)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    steps: Mapped[list] = mapped_column(JSON, default=list)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
 
 
 class AuditEvent(Base):

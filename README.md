@@ -49,11 +49,11 @@ http://localhost:5601 → *Dashboards* → `meu-servico - Observabilidade`.
 
 Vários projetos podem usar a **mesma stack**: o `init` detecta uma stack já rodando e pergunta se você quer incluir a nova automação nela; no dash, um seletor no topo troca de projeto.
 
-## Portal de alertas e integrações (Fase 1)
+## Portal: integrações e automações
 
-O `obskitpy portal enable` liga uma base de **integrações** (PostgreSQL + API + uma aba no dash): conecte **Telegram, Microsoft Teams, Slack e e-mail**, cadastre destinos, contatos e grupos e **teste** o envio. **Conectar com Slack em um clique** (e escolher canal, nome e ícone do robô). Segredos criptografados, perfis de acesso e auditoria. O motor de regras e os incidentes vêm nas próximas fases — veja o [roadmap](docs/portal.md#roadmap).
+O `obskitpy portal enable` liga o portal (PostgreSQL + API + abas no dash). Em **Integrações** você conecta **Telegram, Microsoft Teams, Slack e e-mail** (com **Conectar com Slack em um clique**, canal, nome e ícone do robô). Em **Automações** você **desenha o fluxo** — gatilho (erros, etapas com falha, automação parada, intervalo) → condição → aviso — num editor visual estilo n8n, que reage aos seus logs em tempo real. Segredos criptografados, perfis de acesso e auditoria. Veja o [guia do portal](docs/portal.md).
 
-![Integrações no dash-obskitpy](docs/images/dash-integracoes.png)
+![Editor de automações no dash-obskitpy](docs/images/dash-automacoes.png)
 
 ## Como fica
 

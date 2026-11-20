@@ -484,98 +484,156 @@ def test_kinds_catalog_marks_slack_app_as_oauth_and_hides_internal_fields(sclien
     assert [f["name"] for f in kinds["slack_app"]["config_fields"]] == ["bot_name", "icon_emoji"]
 
 
-# ---------- alertas ----------
+# ---------- automações ----------
 
-from obskitpy.portal import alerts  # noqa: E402
-from obskitpy.portal.models import AlertRule, Incident  # noqa: E402
+import asyncio  # noqa: E402
+from datetime import timedelta  # noqa: E402
+
+from obskitpy.portal import automations  # noqa: E402
+from obskitpy.portal.models import Automation, AutomationRun  # noqa: E402
 
 
-def make_rule_world(client):
-    """Telegram + destino + regra de erros; devolve o id da regra."""
+def make_dest(client):
     login(client)
     integ = client.post("/api/v1/integrations", json={"kind": "telegram", "name": "bot", "secrets": {"bot_token": TOKEN}}, headers=CSRF).json()
-    dest = client.post("/api/v1/destinations", json={"connection_id": integ["id"], "name": "ops", "target": "42"}, headers=CSRF).json()
-    r = client.post("/api/v1/alerts", json={"name": "Erros do robô", "service": "meu-robo", "condition": "error_logs", "threshold": 3,
-                                             "window_minutes": 5, "severity": "critical", "destination_ids": [dest["id"]], "cooldown_minutes": 10}, headers=CSRF)
+    return client.post("/api/v1/destinations", json={"connection_id": integ["id"], "name": "ops", "target": "42"}, headers=CSRF).json()["id"]
+
+
+def flow(dest, trigger="trigger.error_logs", extra_nodes=(), extra_edges=(), **cfg):
+    nodes = [{"id": "t", "type": trigger, "x": 0, "y": 0, "config": {"service": "meu-robo", "threshold": 3, "window_minutes": 5, "repeat_minutes": 10, **cfg}},
+             {"id": "n", "type": "action.notify", "x": 300, "y": 0, "config": {"destination_id": dest, "severity": "critical", "message": "{{event}}: {{value}} erros em {{service}}"}},
+             {"id": "r", "type": "action.notify", "x": 300, "y": 100, "config": {"destination_id": dest, "title": "Voltou", "message": "tudo certo ({{value}})"}}, *extra_nodes]
+    edges = [{"source": "t", "port": "fired", "target": "n"}, {"source": "t", "port": "resolved", "target": "r"}, *extra_edges]
+    return {"nodes": nodes, "edges": edges}
+
+
+def make_auto(client, dest, **kw):
+    r = client.post("/api/v1/automations", json={"name": kw.pop("name", "Erros do robô"), "graph": flow(dest, **kw)}, headers=CSRF)
     assert r.status_code == 201, r.text
     return r.json()["id"]
 
 
-def run_eval(client, rule_id, value, sent):
-    import asyncio
-
-    async def fake_measure(es_url, rule):
+def run_eval(client, auto_id, value, sent):
+    async def fake_measure(es_url, ntype, config):
         return value
 
-    async def fake_deliver(db, key, rule, message):
+    async def fake_send(db, key, dest_id, message):
         sent.append(message)
-        return "1 de 1 destinos"
+        return True, "enviado"
 
-    sessions = client.app_state.sessions
-    with sessions() as db:
-        rule = db.get(AlertRule, rule_id)
-        return asyncio.run(alerts.evaluate(db, SECRET, "http://es", rule, fake_measure, fake_deliver))
-
-
-def test_alert_opens_reminds_and_resolves(client):
-    rid, sent = make_rule_world(client), []
-    assert run_eval(client, rid, 1, sent) == "ok" and not sent                      # abaixo do limite
-    assert run_eval(client, rid, 5, sent) == "alert" and sent[-1].severity == "critical"   # estourou: avisa
-    assert run_eval(client, rid, 6, sent) == "ok" and len(sent) == 1                  # continua: não repete antes do cooldown
     with client.app_state.sessions() as db:
-        rule = db.get(AlertRule, rid)
-        from datetime import timedelta
-        rule.last_notified_at = rule.last_notified_at - timedelta(minutes=11)
+        return asyncio.run(automations.evaluate(db, SECRET, "http://es", db.get(Automation, auto_id), fake_measure, fake_send))
+
+
+def test_automation_fires_reminds_and_resolves_through_the_flow(client):
+    aid, sent = make_auto(client, make_dest(client)), []
+    assert run_eval(client, aid, 1, sent) == [] and not sent                                   # abaixo do limite
+    assert run_eval(client, aid, 5, sent) == ["disparou"] and sent[-1].text == "disparou: 5 erros em meu-robo" and sent[-1].severity == "critical"
+    assert run_eval(client, aid, 6, sent) == [] and len(sent) == 1                             # continua: ainda sem lembrete
+    with client.app_state.sessions() as db:
+        auto = db.get(Automation, aid)
+        st = {k: dict(v) for k, v in auto.state.items()}
+        st["t"]["notified_at"] = (automations.now() - timedelta(minutes=11)).isoformat()
+        auto.state = st
         db.commit()
-    assert run_eval(client, rid, 6, sent) == "reminder" and sent[-1].title.startswith("Lembrete")
-    assert run_eval(client, rid, 0, sent) == "resolved" and sent[-1].title.startswith("✅")
-    incidents = client.get("/api/v1/incidents").json()
-    assert len(incidents) == 1 and incidents[0]["resolved_at"] and incidents[0]["value"] == 6
-    assert client.get("/api/v1/alerts").json()[0]["state"] == "ok"
+    assert run_eval(client, aid, 6, sent) == ["lembrete"] and sent[-1].text.startswith("lembrete:")
+    assert run_eval(client, aid, 0, sent) == ["normalizou"] and sent[-1].title == "Voltou"   # saída "Normalizou" do gatilho
+    runs = client.get("/api/v1/automations/runs").json()
+    assert [r["event"] for r in runs] == ["normalizou", "lembrete", "disparou"] and all(r["ok"] for r in runs)
+    assert client.get("/api/v1/automations").json()[0]["state"]["t"]["state"] == "ok"
 
 
-def test_alert_no_data_fires_on_silence(client):
-    login(client)
-    integ = client.post("/api/v1/integrations", json={"kind": "telegram", "name": "bot", "secrets": {"bot_token": TOKEN}}, headers=CSRF).json()
-    dest = client.post("/api/v1/destinations", json={"connection_id": integ["id"], "name": "ops", "target": "42"}, headers=CSRF).json()
-    rid = client.post("/api/v1/alerts", json={"name": "Parou", "service": "x", "condition": "no_data", "destination_ids": [dest["id"]]}, headers=CSRF).json()["id"]
+def test_condition_node_routes_yes_and_no(client):
+    dest = make_dest(client)
+    cond = {"id": "c", "type": "logic.if", "x": 150, "y": 0, "config": {"field": "value", "operator": ">=", "value": "10"}}
+    g = flow(dest, extra_nodes=[cond])
+    g["edges"] = [{"source": "t", "port": "fired", "target": "c"}, {"source": "c", "port": "yes", "target": "n"}, {"source": "c", "port": "no", "target": "r"}]
+    aid = client.post("/api/v1/automations", json={"name": "Com condição", "graph": g}, headers=CSRF).json()["id"]
     sent = []
-    assert run_eval(client, rid, 0, sent) == "alert" and "não enviou" in sent[-1].text
-    assert run_eval(client, rid, 9, sent) == "resolved"
+    run_eval(client, aid, 4, sent)                      # 4 < 10 -> caminho "Não" (mensagem "Voltou")
+    assert [m.title for m in sent] == ["Voltou"]
+    run_eval(client, aid, 0, sent)                      # normaliza (sem ligação em "Normalizou")
+    run_eval(client, aid, 12, sent)                     # 12 >= 10 -> caminho "Sim"
+    assert sent[-1].severity == "critical"
 
 
-def test_alert_query_failure_is_recorded_without_changing_state(client):
-    import asyncio
-    rid = make_rule_world(client)
+def test_no_data_and_schedule_triggers(client):
+    dest = make_dest(client)
+    aid = make_auto(client, dest, trigger="trigger.no_data", name="Parou")
+    sent = []
+    assert run_eval(client, aid, 0, sent) == ["disparou"] and run_eval(client, aid, 9, sent) == ["normalizou"]
+    g = {"nodes": [{"id": "t", "type": "trigger.schedule", "x": 0, "y": 0, "config": {"service": "x", "every_minutes": 1}},
+                   {"id": "n", "type": "action.notify", "x": 200, "y": 0, "config": {"destination_id": dest, "message": "{{value}} erros"}}],
+         "edges": [{"source": "t", "port": "fired", "target": "n"}]}
+    sid = client.post("/api/v1/automations", json={"name": "Resumo", "graph": g}, headers=CSRF).json()["id"]
+    assert run_eval(client, sid, 7, sent) == []          # primeiro ciclo só marca o relógio
+    with client.app_state.sessions() as db:
+        auto = db.get(Automation, sid)
+        auto.state = {"t": {"state": "ok", "last_run": (automations.now() - timedelta(minutes=2)).isoformat()}}
+        db.commit()
+    assert run_eval(client, sid, 7, sent) == ["agendado"] and sent[-1].text == "7 erros"
 
-    async def boom(es_url, rule):
+
+def test_query_failure_is_recorded_and_state_kept(client):
+    aid = make_auto(client, make_dest(client))
+
+    async def boom(es_url, ntype, config):
         raise httpx.ConnectError("x")
 
     with client.app_state.sessions() as db:
-        rule = db.get(AlertRule, rid)
-        assert asyncio.run(alerts.evaluate(db, SECRET, "http://es", rule, boom)) == "erro"
-    r = client.get("/api/v1/alerts").json()[0]
-    assert r["state"] == "ok" and "Elasticsearch" in r["last_error"]
+        assert asyncio.run(automations.evaluate(db, SECRET, "http://es", db.get(Automation, aid), boom)) == []
+    st = client.get("/api/v1/automations").json()[0]["state"]["t"]
+    assert st["state"] == "ok" and "Elasticsearch" in st["error"]
 
 
-def test_alert_rule_validation_and_permissions(client):
-    rid = make_rule_world(client)
-    base = {"name": "x", "condition": "error_logs", "destination_ids": [999]}
-    assert client.post("/api/v1/alerts", json=base, headers=CSRF).status_code == 422                           # destino inexistente
-    assert client.post("/api/v1/alerts", json={**base, "destination_ids": [1], "condition": "foo"}, headers=CSRF).status_code == 422
-    assert client.post("/api/v1/alerts", json={**base, "destination_ids": []}, headers=CSRF).status_code == 422  # sem destino
-    assert client.post("/api/v1/alerts", json={"name": "Erros do robô", "condition": "error_logs", "destination_ids": [1]}, headers=CSRF).status_code == 409
+def test_graph_validation_and_permissions(client):
+    dest = make_dest(client)
+    def post(graph, name="x"):
+        return client.post("/api/v1/automations", json={"name": name, "graph": graph}, headers=CSRF)
+    good = flow(dest)
+    assert post({"nodes": [good["nodes"][1]], "edges": []}).status_code == 422                          # sem gatilho
+    assert post({**good, "nodes": [{**good["nodes"][0], "type": "foo.bar"}, *good["nodes"][1:]]}).status_code == 422
+    assert post({**good, "edges": [{"source": "t", "port": "fired", "target": "t"}]}).status_code == 422  # nada liga ao gatilho
+    assert post({**good, "edges": [{"source": "t", "port": "nope", "target": "n"}]}).status_code == 422  # porta inexistente
+    assert post({**good, "edges": [{"source": "t", "port": "fired", "target": "zz"}]}).status_code == 422
+    two = [{"source": "n", "port": "next", "target": "r"}, {"source": "r", "port": "next", "target": "n"}]
+    assert post({**good, "edges": good["edges"] + two}).status_code == 422                                # ciclo
+    bad_dest = {**good, "nodes": [good["nodes"][0], {**good["nodes"][1], "config": {"destination_id": 999}}]}
+    assert post(bad_dest).status_code == 422 and "destino" in post(bad_dest).json()["detail"]
+    over = {**good, "nodes": [{**good["nodes"][0], "config": {"threshold": 0}}, *good["nodes"][1:]]}
+    assert post(over).status_code == 422                                                                 # limite fora da faixa
+    assert post(good, "A").status_code == 201 and post(good, "A").status_code == 409
+    aid = client.get("/api/v1/automations").json()[0]["id"]
     client.post("/api/v1/auth/logout", headers=CSRF)
     client.cookies.clear()
     make_user(client, "v@empresa.com", "viewer")
     login(client, "v@empresa.com", "outra-senha-123")
-    assert client.get("/api/v1/alerts").status_code == 200
-    assert client.delete(f"/api/v1/alerts/{rid}", headers=CSRF).status_code == 403
+    assert client.get("/api/v1/automations").status_code == 200 and client.get("/api/v1/automations/nodes").json()["nodes"]
+    assert client.delete(f"/api/v1/automations/{aid}", headers=CSRF).status_code == 403
+    assert client.post("/api/v1/automations", json={"name": "y", "graph": good}, headers=CSRF).status_code == 403
 
 
-def test_alert_test_endpoint_sends_to_destinations_without_incident(client, requests_log):
-    rid = make_rule_world(client)
-    r = client.post(f"/api/v1/alerts/{rid}/test", headers=CSRF)
-    assert r.status_code == 200 and r.json()["sent"].startswith("1 de 1") and r.json()["value"] is None
-    assert any("sendMessage" in q.url.path for q in requests_log)
-    assert client.get("/api/v1/incidents").json() == []
+def test_update_disable_and_delete(client):
+    dest = make_dest(client)
+    aid = make_auto(client, dest)
+    sent = []
+    run_eval(client, aid, 9, sent)
+    r = client.put(f"/api/v1/automations/{aid}", json={"name": "Renomeada", "enabled": False, "graph": flow(dest)}, headers=CSRF)
+    assert r.status_code == 200 and r.json()["name"] == "Renomeada" and r.json()["state"] == {}      # pausar zera o estado
+    assert client.delete(f"/api/v1/automations/{aid}", headers=CSRF).status_code == 204
+    assert client.get("/api/v1/automations").json() == []
+    assert client.get("/api/v1/automations/runs").json()[0]["automation_id"] is None                 # histórico sobrevive
+
+
+def test_test_endpoint_runs_the_flow_for_real(client, requests_log):
+    aid = make_auto(client, make_dest(client))
+    r = client.post(f"/api/v1/automations/{aid}/test", headers=CSRF)
+    assert r.status_code == 200 and [s["label"] for s in r.json()["steps"]] == ["Enviar aviso"] and r.json()["steps"][0]["ok"]
+    sent = [q for q in requests_log if "sendMessage" in q.url.path]
+    assert sent and "[Teste]" in json.loads(sent[0].content)["text"]
+    assert client.get("/api/v1/automations/runs").json()[0]["event"] == "teste"
+
+
+def test_template_variables_are_whitelisted():
+    ctx = {"service": "a", "value": 3, "secret": "x"}
+    assert automations.render("{{ service }}={{value}} {{secret}} {{desconhecida}}", ctx) == "a=3 {{secret}} {{desconhecida}}"

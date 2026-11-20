@@ -1,9 +1,11 @@
-# Portal de alertas e integrações
+# Portal: integrações e automações
 
-!!! note "Fases 1 e 3 (parcial) de um roadmap maior"
-    O portal já guarda as **integrações** (Telegram, Teams, Slack, e-mail), cadastra **destinos** e cria **alertas**
-    que avisam esses destinos sozinhos. Reconhecimento, escalonamento e o editor visual de fluxos vêm nas próximas
-    fases (veja o [roadmap](#roadmap)).
+!!! note "O que já existe"
+    O portal guarda as **integrações** (Telegram, Teams, Slack, e-mail), cadastra **destinos** e tem um **editor visual
+    de automações** (estilo n8n) que reage aos seus logs, traces e métricas. Reconhecimento, escalonamento e
+    mais tipos de gatilho e ação vêm nas próximas fases (veja o [roadmap](#roadmap)).
+
+![Editor de automações no dash-obskitpy](images/dash-automacoes.png)
 
 ![Tela de Integrações no dash-obskitpy](images/dash-integracoes.png)
 
@@ -85,28 +87,39 @@ envia uma mensagem de teste. O resultado (OK ou o motivo da falha) fica registra
 
 Essa separação permite que uma regra continue valendo quando o canal ou o responsável mudar.
 
-## Alertas
+## Automações
 
-Na aba **Alertas** do dash você cria regras que avisam o canal escolhido quando a automação der problema. Depois de
-conectar um destino (por exemplo, um canal do Slack), clique em **+ Novo alerta**:
+**Integrações** só conectam o obskitpy ao mundo (Slack, Telegram, e-mail…). As **automações** dizem *o que fazer* com
+o que os seus robôs registram. Na aba **Automações** do dash você desenha um fluxo, como no n8n:
 
-| Quando avisar | O que mede na janela |
-|---|---|
-| **Logs de erro** | Quantidade de logs `ERROR`/`CRITICAL` do serviço |
-| **Etapas com falha** | Quantidade de spans (traces) com status de erro |
-| **Automação parada** | Nenhum log nem trace recebido (a automação não rodou ou travou) |
+**Gatilho** (o que observar) → **Condição** (opcional, escolhe o caminho) → **Ação** (o que fazer).
 
-Você escolhe o **serviço** (ou todos), o **limite**, a **janela** em minutos, a **gravidade**, os **destinos** e de
-quanto em quanto tempo **relembrar** enquanto o problema continuar.
+1. Clique em **+ Nova automação** e escolha um modelo pronto (ou comece em branco).
+2. **Arraste** etapas da paleta para o canvas (ou clique nelas) e **ligue** puxando a bolinha da direita de uma etapa
+   até a esquerda da seguinte. Clique numa etapa para ajustar os campos no painel da direita.
+3. **Salvar**, **▶ Testar** e deixe a chave **Ativa** ligada.
 
-O portal avalia as regras a cada 30 s consultando o Elasticsearch. O ciclo de cada alerta é:
+| Etapa | Tipo | O que faz |
+|---|---|---|
+| **Erros nos logs** | Gatilho | Dispara com logs `ERROR`/`CRITICAL` acima do limite na janela; tem as saídas *Disparou* e *Normalizou* |
+| **Etapas com falha** | Gatilho | Dispara com spans (traces) de erro acima do limite |
+| **Automação parada** | Gatilho | Dispara quando nenhum dado chega na janela (robô travado ou que não rodou) |
+| **A cada intervalo** | Gatilho | Executa de tempos em tempos (bom para resumos); o valor é a contagem de erros no intervalo |
+| **Condição** | Lógica | Escolhe *Sim* ou *Não* comparando o valor, a janela ou o nome do serviço |
+| **Enviar aviso** | Ação | Manda uma mensagem a um destino (canal do Slack, chat do Telegram, e-mail…) |
 
-1. a condição estoura → abre um **incidente** e envia o aviso (uma vez);
-2. continua estourada → relembra só depois do tempo de "relembrar" (0 = nunca);
-3. volta ao normal → fecha o incidente e envia "✅ Resolvido".
+Nas mensagens você usa variáveis: `{{service}}`, `{{value}}`, `{{window}}`, `{{automation}}`, `{{event}}` e `{{time}}`.
 
-**Testar agora** mede a condição na hora e manda uma mensagem de teste aos destinos, sem abrir incidente. Se o
-Elasticsearch ou um destino falhar, o alerta guarda o motivo e os outros destinos continuam sendo avisados.
+**Como roda:** o portal avalia os gatilhos a cada 30 s consultando o Elasticsearch. Quando o gatilho estoura, ele
+percorre o fluxo a partir da saída *Disparou*; se continuar estourado, repete só depois do tempo de "relembrar"
+(0 = nunca); quando volta ao normal, percorre a saída *Normalizou*. Cada gatilho mostra no canvas o estado ao vivo
+(`● ok · valor 0`, `● disparado`) e a aba **Execuções** guarda o resultado de cada etapa. Se o Elasticsearch ou um
+destino falhar, o motivo aparece e o restante do fluxo continua.
+
+**Testar** roda o fluxo agora de verdade: os avisos são enviados (com `[Teste]` no título) e cada etapa mostra ✓ ou ✗.
+
+!!! note "Quem pode o quê"
+    Administradores criam e editam; operadores testam; visualizadores só olham.
 
 ## Segurança
 
@@ -137,29 +150,29 @@ Documentação interativa em `/api/docs`. Rotas principais:
 | `POST /api/v1/integrations/{id}/test` | operator | Valida e, com `destination_id`, envia uma mensagem de teste |
 | `GET/POST/DELETE /api/v1/destinations` | viewer / admin | Destinos |
 | `GET/POST/DELETE /api/v1/contacts` · `/contact-groups` | viewer / admin | Contatos e grupos |
-| `GET/POST/PUT/DELETE /api/v1/alerts` | viewer / admin | Regras de alerta |
-| `POST /api/v1/alerts/{id}/test` | operator | Mede e envia uma mensagem de teste |
-| `GET /api/v1/incidents` | logado | Incidentes abertos e resolvidos |
+| `GET/POST/PUT/DELETE /api/v1/automations` | viewer / admin | Fluxos de automação (grafo de etapas) |
+| `GET /api/v1/automations/nodes` | logado | Catálogo de etapas, campos e variáveis |
+| `POST /api/v1/automations/{id}/test` | operator | Roda o fluxo agora |
+| `GET /api/v1/automations/runs` | logado | Histórico de execuções |
 | `GET/POST/DELETE /api/v1/users` | admin | Usuários |
 | `GET /api/v1/audit` | admin | Auditoria |
 
 ## Modelo de dados
 
 `users`, `provider_connections`, `notification_destinations`, `contacts`, `contact_groups` (com as tabelas de ligação) e
-`oauth_apps`, `alert_rules`, `incidents` e
+`oauth_apps`, `automations`, `automation_runs` e
 `audit_events`, em PostgreSQL via SQLAlchemy.
 
 ## Roadmap
 
-Planejado, **ainda não implementado** (o essencial da fase 3 — regras, janelas, limiares e incidentes — já existe):
+Planejado, **ainda não implementado** (o editor visual de fluxos e o motor de gatilhos já existem):
 
 | Fase | Entrega |
 |---|---|
 | 2. Envio | Templates de mensagem, workers com retentativa e deduplicação, histórico de entregas |
-| 3. Alertas (resto) | Agrupamento por assinatura de erro, mais tipos de condição e métricas (limiares e janelas já existem) |
+| 3. Mais gatilhos e ações | Gatilhos por métricas e por assinatura de erro; ações de webhook, e-mail em lote e espera |
 | 4. Operação | Reconhecimento, escalonamento, silêncio e recuperação |
 | 5. Multicanal | Conexão por OAuth do Gmail e Teams via Graph (o Slack por OAuth já está disponível) |
-| 6. Editor visual | Construtor de fluxos de alerta |
 | 7. Inteligência | Sugestão de causas e roteamento |
 
 Um ponto a resolver antes das regras: hoje "Execuções com erro" pode ficar em zero mesmo com um `ConnectionError` registrado

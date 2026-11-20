@@ -99,35 +99,53 @@ class GroupOut(BaseModel):
     member_ids: list[int]
 
 
-class RuleIn(BaseModel):
+_ID = r"^[A-Za-z0-9_-]{1,40}$"
+
+
+class NodeIn(BaseModel):
+    id: str = Field(pattern=_ID)
+    type: str = Field(max_length=40)
+    x: float = Field(default=0, ge=-100000, le=100000)
+    y: float = Field(default=0, ge=-100000, le=100000)
+    config: dict = Field(default_factory=dict)
+
+
+class EdgeIn(BaseModel):
+    source: str = Field(pattern=_ID)
+    port: str = Field(default="next", max_length=20)
+    target: str = Field(pattern=_ID)
+
+
+class GraphIn(BaseModel):
+    nodes: list[NodeIn] = Field(default_factory=list, max_length=60)
+    edges: list[EdgeIn] = Field(default_factory=list, max_length=150)
+
+
+class AutomationIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    service: str = Field(default="", max_length=120)
-    condition: str
-    threshold: int = Field(default=1, ge=1, le=1_000_000)
-    window_minutes: int = Field(default=5, ge=1, le=10_080)
-    severity: str = "warning"
-    destination_ids: list[int] = Field(min_length=1)
-    cooldown_minutes: int = Field(default=30, ge=0, le=10_080)
     enabled: bool = True
+    graph: GraphIn
 
 
-class RuleOut(RuleIn):
+class AutomationOut(BaseModel):
     id: int
-    state: str
-    last_value: int | None
-    last_eval_at: datetime | None
-    last_error: str
+    name: str
+    enabled: bool
+    graph: dict
+    state: dict
+    updated_at: datetime
 
 
-class IncidentOut(BaseModel):
+class RunOut(BaseModel):
     id: int
-    rule_name: str
-    service: str
-    severity: str
-    value: int
-    opened_at: datetime
-    resolved_at: datetime | None
-    notified: str
+    automation_id: int | None
+    automation_name: str
+    trigger: str
+    event: str
+    value: int | None
+    ok: bool
+    steps: list
+    at: datetime
 
 
 class SlackAppIn(BaseModel):

@@ -211,8 +211,8 @@
   const canAdmin = () => portal.user?.role === "admin";
   const canTest = () => ["operator", "admin"].includes(portal.user?.role);
 
-  const notEnabled = () => `<div class="empty"><h3>O portal de alertas ainda não está ativado</h3>
-    <p>Ele guarda as integrações (Telegram, Teams, Slack, e-mail), destinos e contatos em um PostgreSQL local.<br>Para ativar, rode na pasta do projeto:</p>
+  const notEnabled = () => `<div class="empty"><h3>O portal ainda não está ativado</h3>
+    <p>Ele guarda as integrações (Telegram, Teams, Slack, e-mail), os destinos e as automações em um PostgreSQL local.<br>Para ativar, rode na pasta do projeto:</p>
     <p><code>obskitpy portal enable</code></p></div>`;
 
   const loginView = (msg = "") => `<div class="card login"><h2>Entrar no portal</h2>
@@ -289,50 +289,9 @@
   }
   const portalBar = () => `<div class="pbar"><span>Logado como <b>${esc(portal.user.email)}</b> <span class="sev INFO">${esc(portal.user.role)}</span></span><button class="btn small ghost" data-act="logout">Sair</button></div>`;
 
-  const COND = { error_logs: "Logs de erro", failed_spans: "Etapas com falha", no_data: "Automação parada" };
-  const COND_HELP = { error_logs: "Avisa quando houver erros (logs ERROR/CRITICAL) acima do limite na janela.",
-    failed_spans: "Avisa quando etapas (traces) terminarem com falha acima do limite na janela.",
-    no_data: "Avisa quando a automação não enviar nada na janela (parou, travou ou não rodou)." };
-  const SEV = { info: "Informativo", warning: "Atenção", critical: "Crítico" };
-  const ruleText = (r) => r.condition === "no_data" ? `sem nenhum dado por ${r.window_minutes} min` : `${r.threshold}+ ${COND[r.condition].toLowerCase()} em ${r.window_minutes} min`;
-
-  function ruleForm(dests, services) {
-    const c = portal.cond || "error_logs";
-    return `<div class="card pform"><h2>Novo alerta</h2><form id="newrule">
-      <label>Nome<input id="rname" required maxlength="120" placeholder="Ex.: Robô de notícias com erros"></label>
-      <label>Serviço (automação)<select id="rsvc"><option value="${esc(state.service)}">${esc(state.service)}</option>${services.filter((s) => s !== state.service).map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("")}<option value="">Todos os serviços</option></select></label>
-      <label>Quando avisar<select id="rcond">${Object.entries(COND).map(([k, v]) => `<option value="${k}" ${k === c ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-      <p class="mono hint">${esc(COND_HELP[c])}</p>
-      <div class="row3">${c === "no_data" ? "" : '<label>Limite<input id="rthr" type="number" min="1" value="1"></label>'}
-        <label>Janela (minutos)<input id="rwin" type="number" min="1" value="5"></label>
-        <label>Relembrar a cada (min, 0 = não)<input id="rcool" type="number" min="0" value="30"></label></div>
-      <label>Gravidade<select id="rsev">${Object.entries(SEV).map(([k, v]) => `<option value="${k}" ${k === "warning" ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-      <fieldset><legend>Avisar em</legend>${dests.map((d, i) => `<label class="chk"><input type="checkbox" name="rdest" value="${d.id}" ${i === 0 ? "checked" : ""}> ${esc(d.name)} <small>(${esc(d.connection)})</small></label>`).join("")}</fieldset>
-      <div class="row"><button class="btn" type="submit">Criar alerta</button><button class="btn ghost" type="button" data-act="cancel-rule">Cancelar</button></div></form></div>`;
-  }
-
-  async function alertsTab() {
+  async function automationsTab() {
     const gate = await portalGate();
-    if (gate) return gate;
-    const [dests, rules, incidents, info] = await Promise.all([papi("destinations"), papi("alerts"), papi("incidents?limit=30"), papi("alerts/conditions")]);
-    portal.rules = rules;
-    const names = Object.fromEntries(dests.map((d) => [d.id, d.name]));
-    const rows = (list, cols) => list.length ? `<table><thead><tr>${cols.map((c) => `<th>${c[0]}</th>`).join("")}</tr></thead><tbody>${list.map((x) => `<tr>${cols.map((c) => `<td>${c[1](x)}</td>`).join("")}</tr>`).join("")}</tbody></table>` : "";
-    const ruleCard = (r) => {
-      const [label, cls] = !r.enabled ? ["PAUSADO", "idle"] : r.state === "firing" ? ["DISPARADO", "bad"] : ["OK", "ok"];
-      return `<div class="pcard"><div class="ptop"><span class="picon">🔔</span><div><b>${esc(r.name)}</b><small>${esc(r.service || "todos os serviços")} · ${esc(SEV[r.severity])}</small></div><span class="pstat ${cls}">${label}</span></div>
-        <p class="pmeta">Avisa quando houver ${esc(ruleText(r))}<br>Destinos: ${esc(r.destination_ids.map((i) => names[i] || "?").join(", "))}${r.cooldown_minutes ? ` · relembra a cada ${r.cooldown_minutes} min` : ""}</p>
-        <p class="pmeta">${r.last_eval_at ? `Valor agora: <b>${r.last_value ?? "—"}</b> · avaliado às ${new Date(r.last_eval_at).toLocaleTimeString("pt-BR")}` : "Ainda não avaliado"}</p>
-        ${r.last_error ? `<p class="perr">${esc(r.last_error)}</p>` : ""}
-        ${canTest() ? `<div class="row"><button class="btn small" data-act="rule-test" data-id="${r.id}">Testar agora</button>${canAdmin() ? `<button class="btn small ghost" data-act="rule-toggle" data-id="${r.id}">${r.enabled ? "Pausar" : "Ativar"}</button><button class="btn small ghost danger" data-act="rule-del" data-id="${r.id}">Remover</button>` : ""}</div>` : ""}</div>`;
-    };
-    return `${portalBar()}
-      ${info.evaluator ? "" : '<div class="alert">O avaliador de alertas está desligado neste portal (sem acesso ao Elasticsearch). Rode <code>obskitpy portal enable</code> para atualizar a stack.</div>'}
-      <div class="psec"><div class="phead"><h2>Alertas</h2>${canAdmin() && dests.length ? '<button class="btn small" data-act="new-rule">+ Novo alerta</button>' : ""}</div>
-        ${!dests.length ? '<div class="card"><p class="mono hint">Para criar um alerta, primeiro conecte um destino (canal do Slack, chat do Telegram, e-mail…) em <a href="#integrations">Integrações</a>.</p></div>' : ""}
-        ${portal.ruleForm && dests.length ? ruleForm(dests, state.services) : ""}
-        <div class="pgrid">${rules.length ? rules.map(ruleCard).join("") : dests.length ? '<div class="card"><p class="mono hint">Nenhum alerta ainda. Crie o primeiro: ele avisa o seu canal quando a automação der erro ou parar.</p></div>' : ""}</div></div>
-      <div class="psec card"><div class="phead"><h2>Incidentes</h2></div>${rows(incidents, [["Abertura", (i) => fmtDateTime(i.opened_at)], ["Alerta", (i) => esc(i.rule_name)], ["Serviço", (i) => esc(i.service || "—")], ["Valor", (i) => i.value], ["Situação", (i) => i.resolved_at ? `<span class="pstat ok">RESOLVIDO</span>` : '<span class="pstat bad">ABERTO</span>'], ["Aviso", (i) => esc(i.notified)]]) || '<p class="mono hint">Nenhum incidente.</p>'}</div>`;
+    return gate || '<div id="autoroot" class="autos"></div>';  // o editor (editor.js) desenha e cuida de tudo dentro desta raiz
   }
 
   async function integrationsTab() {
@@ -421,14 +380,6 @@
       if (act === "slack-setup") { portal.slackSetup = true; state.lastHtml = ""; return render(false); }
       if (act === "slack-cancel") { portal.slackSetup = false; state.lastHtml = ""; return render(false); }
       if (act === "slack-save" || act === "slack-test") return slackSave(id, act === "slack-test", app);
-      if (act === "new-rule") { portal.ruleForm = true; state.lastHtml = ""; return render(false); }
-      if (act === "cancel-rule") { portal.ruleForm = false; state.lastHtml = ""; return render(false); }
-      if (act === "rule-test") {
-        b.disabled = true; b.textContent = "Testando…";
-        return run(async () => { const r = await papi(`alerts/${id}/test`, { method: "POST" }); toast(`Enviado para ${r.sent}.${r.value != null ? ` Valor agora: ${r.value}${r.would_fire ? " (dispararia)" : ""}.` : ""}`, r.sent.includes("(")); });
-      }
-      if (act === "rule-toggle") { const r = portal.rules.find((x) => x.id === +id); return run(() => papi(`alerts/${id}`, { method: "PUT", body: { ...r, enabled: !r.enabled } }), r.enabled ? "Alerta pausado" : "Alerta ativado"); }
-      if (act === "rule-del" && confirm("Remover este alerta? Esta ação não pode ser desfeita.")) return run(() => papi(`alerts/${id}`, { method: "DELETE" }), "Alerta removido");
       if (act === "new-form") { portal.form = true; state.lastHtml = ""; return render(false); }
       if (act === "cancel-form") { portal.form = false; state.lastHtml = ""; return render(false); }
       if (act === "test") {
@@ -450,16 +401,6 @@
       const grab = (attr) => Object.fromEntries($$(`[data-${attr}]`, ni).map((el) => [el.dataset[attr], el.type === "checkbox" ? el.checked : el.type === "number" ? (el.value === "" ? null : +el.value) : el.value.trim()]));
       run(async () => { await papi("integrations", { method: "POST", body: { kind: portal.kind, name: $("#intname", ni).value, config: grab("config"), secrets: grab("secret") } }); portal.form = false; }, "Integração salva. Use “Testar” para confirmar.");
     });
-    const rc = $("#rcond", app);
-    if (rc) rc.addEventListener("change", () => { portal.cond = rc.value; state.lastHtml = ""; render(false); });
-    const nr = $("#newrule", app);
-    if (nr) nr.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const ids = $$('[name="rdest"]:checked', nr).map((i) => +i.value);
-      if (!ids.length) return toast("Escolha pelo menos um destino.", true);
-      run(async () => { await papi("alerts", { method: "POST", body: { name: $("#rname", nr).value, service: $("#rsvc", nr).value, condition: $("#rcond", nr).value,
-        threshold: $("#rthr", nr) ? +$("#rthr", nr).value : 1, window_minutes: +$("#rwin", nr).value, cooldown_minutes: +$("#rcool", nr).value, severity: $("#rsev", nr).value, destination_ids: ids } }); portal.ruleForm = false; }, "Alerta criado. Use “Testar agora” para conferir.");
-    });
     const nd = $("#newdest", app);
     if (nd) nd.addEventListener("submit", (e) => { e.preventDefault(); run(() => papi("destinations", { method: "POST", body: { connection_id: +$("#dconn", nd).value, name: $("#dname", nd).value, target: $("#dtarget", nd).value } }), "Destino adicionado"); });
     const nc = $("#newcontact", app);
@@ -469,8 +410,8 @@
   }
 
   /* ---------- orquestração ---------- */
-  const TABS = { overview, logs: logsTab, traces: tracesTab, metrics: metricsTab, alerts: alertsTab, integrations: integrationsTab };
-  const isPortalTab = () => state.tab === "integrations" || state.tab === "alerts";
+  const TABS = { overview, logs: logsTab, traces: tracesTab, metrics: metricsTab, automations: automationsTab, integrations: integrationsTab };
+  const isPortalTab = () => state.tab === "integrations" || state.tab === "automations";
   let busy = false;
   async function render(showSpin = true) {
     if (busy) return; busy = true; state.emptyShown = false;
@@ -490,7 +431,12 @@
   function wire() {
     const app = $("#app");
     wireTips(app);
-    if (isPortalTab()) return portalWire(app);
+    if (isPortalTab()) {
+      portalWire(app);
+      const root = $("#autoroot", app);
+      if (root && window.ObsAuto) ObsAuto.mount(root, { papi, toast, esc, fmtDateTime, canAdmin, canTest, services: () => state.services, service: () => state.service });
+      return;
+    }
     $$("[data-svc]", app).forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); selectService(a.dataset.svc); }));
     $$("[data-err]", app).forEach((tr) => tr.addEventListener("click", () => { state.errType = tr.dataset.err; state.seen = null; go("logs"); }));
     $$("[data-sev]", app).forEach((b) => b.addEventListener("click", () => { state.sev = b.dataset.sev; state.seen = null; render(false); }));
@@ -503,7 +449,8 @@
   function go(tab, id) { const h = id ? `${tab}/${id}` : tab; if (location.hash.slice(1) === h) { state.tab = tab; render(false); } else location.hash = h; }
   function fromHash() {
     const [path, qs] = location.hash.slice(1).split("?");
-    const [t, id] = path.split("/");
+    let [t, id] = path.split("/");
+    if (t === "alerts") t = "automations";
     state.tab = TABS[t] ? t : "overview"; if (id) state.trace = id;
     const wanted = qs && (qs.match(/(?:^|&)service=([^&]+)/) || [])[1];
     if (wanted && decodeURIComponent(wanted) !== state.service) selectService(decodeURIComponent(wanted), false);

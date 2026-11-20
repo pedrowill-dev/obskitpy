@@ -907,7 +907,7 @@ def wait_portal(env: dict[str, str], timeout: int = 240) -> None:
 
 
 def cmd_portal_enable(args) -> None:
-    """Liga o portal de alertas e integrações: PostgreSQL + API, com segredos gerados e a aba Integrações no dash."""
+    """Liga o portal de integrações e automações: PostgreSQL + API, com segredos gerados e as abas Integrações e Automações no dash."""
     obs = Path(args.dir)
     env = read_env(obs / ".env")
     if is_shared(env):
@@ -915,7 +915,7 @@ def cmd_portal_enable(args) -> None:
     if not uses_dash(env):
         raise CliError("a tela de Integrações fica no dash-obskitpy, e este projeto usa só o Kibana.",
                        hint=f"Recrie com `{cmd('init --force --local ambos')}` e rode de novo.")
-    ui.banner(__version__, "portal de alertas e integrações")
+    ui.banner(__version__, "portal de integrações e automações")
     ui.heading("Configuração")
     with ui.Spinner("Preparando arquivos e segredos") as sp:
         for name in ("docker-compose.yml", "nginx.conf"):  # arquivos gerados: ganham os serviços do portal
@@ -981,7 +981,7 @@ def cmd_portal_enable(args) -> None:
     pe = read_env(obs / ".portal.env")
     api_docs = f"http://localhost:{env['PORTAL_PORT']}/api/docs"
     ui.out()
-    ui.box("Portal de alertas e integrações", [
+    ui.box("Portal de integrações e automações", [
         f"{ui.paint('Integrações  ', 'gray')} {ui.link(portal_url(env))}",
         f"{ui.paint('API e docs    ', 'gray')} {ui.link(api_docs)}",
         f"{ui.paint('Usuário       ', 'gray')} {pe['OBSKITPY_ADMIN_EMAIL']}",
@@ -1127,7 +1127,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = command("run", cmd_run, "roda o seu programa enviando os dados para a stack (sobe a stack se preciso)")
     run.add_argument("cmd", nargs=argparse.REMAINDER, help="o comando, ex.: python app.py")
 
-    prt = sub.add_parser("portal", help="portal de alertas e integrações (PostgreSQL + API)")
+    prt = sub.add_parser("portal", help="portal de integrações e automações (PostgreSQL + API)")
     prtsub = prt.add_subparsers(dest="action", required=True)
     pen = prtsub.add_parser("enable", help="liga o portal: PostgreSQL, API, segredos e a aba Integrações no dash")
     pen.add_argument("--dir", default=DEFAULT_DIR)
