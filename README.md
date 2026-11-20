@@ -1,18 +1,23 @@
 <h1 align="center"><img src="docs/images/logo.png" alt="obskitpy" width="460"></h1>
 
-<p align="center"><b>Observabilidade para automações Python</b> — OpenTelemetry → Elasticsearch → Kibana, via CLI</p>
+<p align="center"><b>Observabilidade para automações Python</b> — OpenTelemetry → Elasticsearch → dash-obskitpy ou Kibana, via CLI</p>
 
 [![CI](https://github.com/pedrowill-dev/obskitpy/actions/workflows/ci.yml/badge.svg)](https://github.com/pedrowill-dev/obskitpy/actions/workflows/ci.yml)
 
-Logs, traces e métricas de qualquer projeto Python (RPA, scrapers, jobs, APIs) num dashboard do Kibana,
-com **dois comandos** e **três linhas de código**. Tudo roda local, em Docker, sobre padrões abertos:
-[OpenTelemetry](https://opentelemetry.io/) → Elasticsearch → Kibana.
+Logs, traces e métricas de qualquer projeto Python (RPA, scrapers, jobs, APIs) num dashboard, com
+**dois comandos** e **três linhas de código**. **Você escolhe onde visualizar**: o **dash-obskitpy** (leve, próprio,
+sem Kibana) ou o **Kibana** (completo), ou os dois. Tudo roda local, em Docker, sobre padrões abertos:
+[OpenTelemetry](https://opentelemetry.io/) → Elasticsearch → dash-obskitpy / Kibana.
 
 ```bash
 uv add "obskitpy[requests]"      # ou: pip install "obskitpy[requests]"
-uv run obskitpy init     # cria observability/ (stack + dashboard base) no seu projeto
-uv run obskitpy up       # sobe Elasticsearch, Kibana e Collector e cria o dashboard
+uv run obskitpy init     # assistente: escolhe onde visualizar, sobe a stack e roda um exemplo
 ```
+
+![Assistente obskitpy init](docs/images/cli-init.png)
+
+Sem terminal interativo (scripts, CI), escolha por flags: `obskitpy init --local dash-obskitpy --yes --up --demo`
+(`--local kibana`, `dash-obskitpy` ou `ambos`).
 
 ```python
 import logging, obskitpy
@@ -31,11 +36,16 @@ except Exception:
 shutdown()                                   # descarrega os dados pendentes
 ```
 
-Abra http://localhost:5601 → *Dashboards* → `meu-servico - Observabilidade`.
+Abra o dashboard com `obskitpy open`: **dash-obskitpy** em http://localhost:8600 ou, no Kibana,
+http://localhost:5601 → *Dashboards* → `meu-servico - Observabilidade`.
 
 ## Como fica
 
-Saúde do robô — logs, erros por tipo e origem, duração de cada operação, tudo gerado pelo `obskitpy init`:
+**dash-obskitpy** — o dashboard próprio, leve e sem Kibana:
+
+![dash-obskitpy](docs/images/dash-overview.png)
+
+**Kibana** — saúde do robô — logs, erros por tipo e origem, duração de cada operação, dashboard base gerado pelo `obskitpy init`:
 
 ![Painéis de saúde do robô](docs/images/dashboard-saude.png)
 
@@ -73,6 +83,7 @@ De um erro ao trace completo, pelo `trace_id` — veja qual operação falhou e 
 
 1. [Início rápido](docs/inicio-rapido.md) — do zero ao dashboard em 5 minutos
 2. [Guia do obskitpy](docs/guia-obskitpy.md) — referência da CLI e da biblioteca
+   - [dash-obskitpy](docs/dash-obskitpy.md) — o dashboard próprio e como escolher onde visualizar
 3. [Dashboards](docs/dashboards.md) — o que cada painel mostra, como criar os seus e versioná-los
 4. [Arquitetura](docs/arquitetura.md) — como os dados fluem e por que foi montado assim
 5. [Solução de problemas](docs/solucao-de-problemas.md)

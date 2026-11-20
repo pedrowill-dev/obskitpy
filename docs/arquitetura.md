@@ -29,7 +29,13 @@ Os índices são fixados em `logs-/traces-/metrics-generic.otel-default`.
 Recebe os três sinais em *data streams* gerenciados com os templates nativos de OTel (disponíveis desde a 8.16).
 Guarda também o índice de dados de negócio do seu robô, se houver.
 
-**Kibana 8.17**
+**dash-obskitpy** (opcional, `--local dash-obskitpy`)
+Container `nginx` que serve uma página estática (HTML/CSS/JS puros) e expõe ao navegador só a leitura do
+Elasticsearch (`_search`, `_count`, `_field_caps`) em `/es/`. É a alternativa leve ao Kibana; veja
+[dash-obskitpy](dash-obskitpy.md). Kibana e dash são *perfis* do Docker Compose, ativados pelo `.env`
+(`COMPOSE_PROFILES`), então só sobe o que você escolheu.
+
+**Kibana 8.17** (opcional, `--local kibana`)
 Mostra o dashboard. Os objetos (data views, visualizações, buscas, dashboard) são importados pela API de
 *saved objects* — o que torna o dashboard um arquivo versionável.
 

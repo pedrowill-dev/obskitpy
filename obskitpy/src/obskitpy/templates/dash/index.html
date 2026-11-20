@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dash-obskitpy</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="./" aria-label="dash-obskitpy"><img src="logo.png" alt="obskitpy" height="30"><span class="chip">dash</span></a>
+    <span class="svc" id="svc" title="Serviço"></span>
+    <nav class="tabs" id="tabs" aria-label="Seções">
+      <a href="#overview" data-tab="overview">Visão geral</a>
+      <a href="#logs" data-tab="logs">Logs</a>
+      <a href="#traces" data-tab="traces">Traces</a>
+      <a href="#metrics" data-tab="metrics">Métricas</a>
+    </nav>
+    <div class="tools">
+      <div class="seg" id="ranges" role="group" aria-label="Período">
+        <button data-r="15m">15 min</button><button data-r="1h">1 h</button><button data-r="6h">6 h</button><button data-r="24h">24 h</button><button data-r="7d">7 d</button>
+      </div>
+      <button class="icon" id="refresh" title="Atualizar agora" aria-label="Atualizar">⟳</button>
+      <label class="auto" title="Atualizar a cada 10 s"><input type="checkbox" id="auto" checked><span>auto</span></label>
+      <a class="btn-link" id="kibana" hidden target="_blank" rel="noopener">Kibana ↗</a>
+    </div>
+  </div>
+</header>
+<main class="wrap" id="app" aria-live="polite"></main>
+<footer class="wrap foot"><span id="status"><i class="dot"></i> conectando…</span><span>dash-obskitpy · OpenTelemetry + Elasticsearch</span></footer>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

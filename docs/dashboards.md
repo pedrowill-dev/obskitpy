@@ -1,4 +1,7 @@
-# Dashboards
+# Dashboards (Kibana)
+
+> Esta página trata do dashboard do **Kibana** (`--local kibana` ou `ambos`). O dashboard próprio, leve e sem
+> Kibana, está em [dash-obskitpy](dash-obskitpy.md).
 
 ## O dashboard base
 

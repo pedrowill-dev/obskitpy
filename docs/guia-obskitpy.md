@@ -8,38 +8,54 @@ Todos os comandos aceitam `--dir PASTA` (padrão: `observability`) e devem ser e
 
 | Comando | O que faz |
 |---|---|
-| `obskitpy init` | Cria `observability/` com a stack e o dashboard base. |
-| `obskitpy up` | Sobe a stack, espera os serviços ficarem saudáveis (até 5 min) e **aplica o dashboard**. Pode ser repetido à vontade. |
+| `obskitpy init` | **Assistente**: cria `observability/` (stack e dashboard) e, se você quiser, já sobe tudo e roda um exemplo. |
+| `obskitpy up` | Sobe a stack, mostra o progresso, espera ficar saudável e **aplica o dashboard** (Kibana). Pode ser repetido à vontade. |
 | `obskitpy down [-v]` | Derruba a stack. `-v` apaga também os dados (volume do Elasticsearch). |
-| `obskitpy status` | Mostra os containers e o link do dashboard. |
-| `obskitpy open` | Abre o dashboard no navegador. |
+| `obskitpy status` | Tabela dos containers (estado e portas) e os links dos dashboards. |
+| `obskitpy open [--ui kibana\|dash-obskitpy]` | Abre o dashboard no navegador (padrão: dash-obskitpy se existir, senão Kibana). |
+| `obskitpy doctor` | Diagnostica Docker, Compose v2, memória do Docker e portas. |
 | `obskitpy dashboard apply` | Importa `observability/dashboard.ndjson` no Kibana (sobrescreve objetos com o mesmo id). |
 | `obskitpy dashboard export` | Grava no `dashboard.ndjson` o dashboard **como está no Kibana agora**. |
+| `obskitpy --version` | Mostra a versão. |
+
+A saída é colorida, com spinners e caixas. Ela respeita `NO_COLOR` e vira texto simples em pipes e CI
+(use `FORCE_COLOR=1` para forçar as cores).
 
 ### `obskitpy init`
 
+Com terminal interativo, faz perguntas (e usa os padrões onde você apertar Enter). Sem terminal, ou com
+`--yes`, não pergunta nada.
+
 | Opção | Padrão | Descrição |
 |---|---|---|
-| `--service NOME` | nome da pasta atual | Nome do serviço (minúsculas, números e `-`). Identifica seus dados no Kibana. |
+| `--service NOME` | nome da pasta atual | Nome do serviço (minúsculas, números e `-`). Identifica seus dados. |
+| `--local {kibana,dash-obskitpy,ambos}` | pergunta; sem terminal, `kibana` | **Onde visualizar os logs.** Veja [dash-obskitpy](dash-obskitpy.md). |
+| `-y`, `--yes` | — | Não perguntar nada (usa os padrões e o que vier por flag). |
+| `--up` | — | Sobe a stack ao terminar. |
+| `--demo` | — | Com `--up`: gera `obskitpy_demo.py` e o roda, para já ter dados. |
 | `--es-port` | 9200 | Porta local do Elasticsearch. |
-| `--kibana-port` | 5601 | Porta local do Kibana. |
+| `--kibana-port` | 5601 | Porta local do Kibana (se usar Kibana). |
+| `--dash-port` | 8600 | Porta local do dash-obskitpy (se usar). |
 | `--otlp-grpc-port` | 4317 | Porta local do Collector (gRPC) — a que a biblioteca usa. |
 | `--otlp-http-port` | 4318 | Porta local do Collector (HTTP). |
 | `--force` | — | Recria uma instalação existente (**o `dashboard.ndjson` atual é perdido**). |
 
-Sem `--force`, o `init` se recusa a sobrescrever uma pasta já inicializada.
+Portas que você não informar e que estiverem ocupadas são trocadas automaticamente pela próxima livre
+(o `init` avisa). Sem `--force`, ele se recusa a sobrescrever uma pasta já inicializada.
 
 ### O que o `init` cria
 
 ```
 observability/
-├── .env                        # serviço e portas (lido pelo docker compose e pela CLI)
-├── docker-compose.yml          # Elasticsearch 8.17, Kibana 8.17, OpenTelemetry Collector
+├── .env                        # serviço, interface escolhida, perfis do compose e portas
+├── docker-compose.yml          # Elasticsearch 8.17, Collector e, conforme --local, Kibana 8.17 e/ou dash
 ├── otel-collector-config.yaml  # recebe OTLP e grava no Elasticsearch
-└── dashboard.ndjson            # dashboard no formato de "saved objects" do Kibana
+├── dashboard.ndjson            # (Kibana) dashboard no formato de "saved objects"
+├── nginx.conf                  # (dash-obskitpy) serve o dash e dá acesso só de leitura ao Elasticsearch
+└── dash/                       # (dash-obskitpy) o dashboard: HTML, CSS, JS e logo
 ```
 
-Versione tudo no git. O `.env` contém apenas nome e portas, nenhum segredo.
+Versione tudo no git. O `.env` contém apenas nome, interface e portas, nenhum segredo.
 
 ## Biblioteca
 

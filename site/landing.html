@@ -4,9 +4,9 @@
 <section class="hero">
   <div class="container hero-grid">
     <div>
-      <span class="chip"><i></i> v0.1 · já no PyPI · licença MIT</span>
+      <span class="chip"><i></i> v0.2 · já no PyPI · licença MIT</span>
       <h1>Observabilidade para <em>automações Python</em>, em dois comandos.</h1>
-      <p class="lead">Logs, traces e métricas do seu RPA, scraper ou job num dashboard do Kibana. Local, em Docker, sobre padrões abertos: OpenTelemetry → Elasticsearch → Kibana.</p>
+      <p class="lead">Logs, traces e métricas do seu RPA, scraper ou job num dashboard — e <b>você escolhe onde ver</b>: o <b>dash-obskitpy</b> (leve e próprio) ou o <b>Kibana</b>. Local, em Docker, sobre padrões abertos.</p>
       <div class="hero-cta">
         <a class="btn primary" href="docs/inicio-rapido.html">Começar agora →</a>
         <a class="btn" href="docs/exemplo.html">Ver um exemplo real</a>
@@ -17,11 +17,9 @@
           <button role="tab" data-tab="pip" aria-selected="false">pip</button>
         </div>
         <div class="tab-panel"><pre data-lang="bash"><code class="language-bash">uv add "obskitpy[requests]"
-uv run obskitpy init
-uv run obskitpy up</code></pre></div>
+uv run obskitpy init     # assistente interativo</code></pre></div>
         <div class="tab-panel" hidden><pre data-lang="bash"><code class="language-bash">pip install "obskitpy[requests]"
-obskitpy init
-obskitpy up</code></pre></div>
+obskitpy init            # assistente interativo</code></pre></div>
       </div>
     </div>
 
@@ -29,19 +27,20 @@ obskitpy up</code></pre></div>
       <div class="term-bar"><span></span><span></span><span></span><b>~/meu-projeto</b></div>
       <div class="term-body" id="term" aria-live="off"></div>
       <script type="application/json" id="term-script">[
-        {"cmd": "uv add \"obskitpy[requests]\""},
-        {"out": "Installed 15 packages in 12ms", "cls": "c"},
         {"cmd": "uv run obskitpy init"},
-        {"out": "Criado observability/ para o serviço 'meu-projeto':"},
-        {"out": "  docker-compose.yml  otel-collector-config.yaml  dashboard.ndjson  .env", "cls": "c"},
-        {"cmd": "uv run obskitpy up"},
-        {"out": " Container obskitpy-meu-projeto-elasticsearch-1  Healthy", "cls": "c"},
-        {"out": " Container obskitpy-meu-projeto-kibana-1         Healthy", "cls": "c"},
-        {"out": "✔ Dashboard aplicado (12 objetos)", "cls": "ok", "wait": 300},
-        {"out": "  http://localhost:5601/app/dashboards#/view/meu-projeto-observability", "cls": "u"},
-        {"cmd": "uv run python app.py"},
-        {"out": "INFO pedidos: pedido ok", "cls": "c"},
-        {"out": "ERROR pedidos: falha no pedido  → ValueError em app.py:validar:10"}
+        {"out": "  obskitpy ▁▂▁▁▃▇▂▁▁▂▁ v0.2.0", "cls": "ok", "wait": 250},
+        {"out": "? Nome do serviço (meu-projeto) ›", "cls": "u"},
+        {"out": "? Onde você quer visualizar os logs?"},
+        {"out": "   1 Kibana   2 dash-obskitpy   3 Os dois", "cls": "c"},
+        {"out": "? Escolha (1) › 2", "cls": "u", "wait": 450},
+        {"out": "✔ Ambiente verificado", "cls": "ok"},
+        {"out": "✔ Criado observability/ para o serviço meu-projeto", "cls": "ok"},
+        {"out": "✔ Stack no ar", "cls": "ok", "wait": 500},
+        {"out": "✔ Exemplo enviado (obskitpy_demo.py)", "cls": "ok", "wait": 300},
+        {"out": "╭─ Tudo pronto ────────────────────────╮"},
+        {"out": "│ dash-obskitpy  http://localhost:8600 │", "cls": "u"},
+        {"out": "│ OTLP gRPC      localhost:4317        │"},
+        {"out": "╰──────────────────────────────────────╯"}
       ]</script>
     </div>
   </div>
@@ -55,10 +54,9 @@ obskitpy up</code></pre></div>
     <p class="sub">Sem configurar Collector, mapeamento nem painéis. A CLI gera a stack e o dashboard; a biblioteca liga o seu código.</p>
     <div class="steps">
       <div class="step">
-        <h3>Crie a stack</h3>
-        <p>Gera <code>observability/</code> com Docker Compose, Collector e o dashboard base.</p>
-        <pre data-lang="bash"><code class="language-bash">obskitpy init
-obskitpy up</code></pre>
+        <h3>Rode o assistente</h3>
+        <p>Escolha onde visualizar, e ele sobe a stack e roda um exemplo para o dashboard já nascer com dados.</p>
+        <pre data-lang="bash"><code class="language-bash">obskitpy init</code></pre>
       </div>
       <div class="step">
         <h3>Instrumente o código</h3>
@@ -68,7 +66,7 @@ shutdown = obskitpy.setup("meu-servico")</code></pre>
       </div>
       <div class="step">
         <h3>Abra o dashboard</h3>
-        <p>Erros, tempos e execuções já aparecem no Kibana, prontos para investigar.</p>
+        <p>Erros, tempos e execuções já aparecem, prontos para investigar.</p>
         <pre data-lang="bash"><code class="language-bash">obskitpy open</code></pre>
       </div>
     </div>
@@ -82,13 +80,29 @@ shutdown = obskitpy.setup("meu-servico")</code></pre>
     <h2>Tudo que você precisa para enxergar o que o robô faz</h2>
     <p class="sub">Foco em quem opera automações: saber o que falhou, onde e por quê, sem montar infraestrutura.</p>
     <div class="cards three">
-      <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></div><h3>Dashboard pronto</h3><p>Logs por severidade, erros por tipo e origem, execuções e duração de cada operação, já no primeiro <code>up</code>.</p></div>
+      <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></div><h3>Dashboard pronto</h3><p>Logs por severidade, erros por tipo e origem, execuções e duração de cada operação, já no primeiro <code>init</code>.</p></div>
       <div class="card"><div class="ico amber"><svg viewBox="0 0 24 24"><path d="m8 2 1.9 1.9M16 2l-1.9 1.9"/><path d="M9 7.1V6a3 3 0 0 1 6 0v1.1"/><rect x="6" y="7" width="12" height="13" rx="6"/><path d="M12 20v-7M2 13h4M18 13h4M3.5 6.5 6.4 8M20.5 6.5 17.6 8M4 20l2.5-2.5M20 20l-2.5-2.5"/></svg></div><h3>Erros rastreáveis</h3><p>Todo <code>log.exception()</code> sai com <code>error.type</code>, <code>error.origin</code> (arquivo:função:linha) e a cadeia de chamadas.</p></div>
       <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 4-6 3-12 4.5"/></svg></div><h3>Dashboard como código</h3><p>Edite no Kibana, rode <code>obskitpy dashboard export</code> e versione. Qualquer máquina recria tudo com <code>up</code>.</p></div>
       <div class="card"><div class="ico amber"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6M4 11.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></div><h3>Dados de negócio juntos</h3><p>Grave o que o robô extrai no mesmo Elasticsearch e misture saúde do robô com os dados extraídos num só painel.</p></div>
       <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><path d="M12 2 3 7l9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5M3 17l9 5 9-5"/></svg></div><h3>Padrões abertos</h3><p><code>tracer()</code> e <code>meter()</code> devolvem objetos do OpenTelemetry. Troque o backend sem mexer no código.</p></div>
-      <div class="card"><div class="ico amber"><svg viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></svg></div><h3>Zero configuração</h3><p>Versões compatíveis fixadas, métricas em temporalidade correta e logs ligados ao trace. Só funciona.</p></div>
+      <div class="card"><div class="ico amber"><svg viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></svg></div><h3>CLI que guia você</h3><p>Assistente colorido, com spinners, checagem do ambiente (<code>obskitpy doctor</code>), portas livres escolhidas sozinhas e um exemplo que já gera dados.</p></div>
     </div>
+    </div>
+  </div>
+</section>
+
+<!-- ESCOLHA -->
+<section class="block">
+  <div class="container">
+    <span class="eyebrow">Você escolhe</span>
+    <h2>Onde você quer ver os logs?</h2>
+    <p class="sub">Uma pergunta no <code>obskitpy init</code> (ou a flag <code>--local</code>) define a interface. Dá para trocar depois.</p>
+    <div class="cards three">
+      <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></div><h3>dash-obskitpy</h3><p>Dashboard próprio do obskitpy: leve, direto ao ponto, sem Kibana. Sobe mais rápido e gasta menos memória.</p><p style="margin-top:12px"><code>--local dash-obskitpy</code></p></div>
+      <div class="card"><div class="ico amber"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div><h3>Kibana</h3><p>Completo: explore logs, traces e métricas a fundo e monte seus próprios painéis, versionados no git.</p><p style="margin-top:12px"><code>--local kibana</code></p></div>
+      <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="16" rx="2"/><rect x="13" y="4" width="8" height="16" rx="2"/></svg></div><h3>Os dois</h3><p>dash-obskitpy para olhar rápido no dia a dia e Kibana para investigar a fundo, com atalho de um para o outro.</p><p style="margin-top:12px"><code>--local ambos</code></p></div>
+    </div>
+    <figure style="margin:34px 0 0"><div class="shot"><img src="assets/images/dash-overview.png" alt="Visão geral do dash-obskitpy" loading="lazy"></div><figcaption class="shot-cap">O dash-obskitpy, com a logo do obskitpy: contadores, logs por severidade, erros por origem e duração das operações. <a href="docs/dash-obskitpy.html">Conheça o dash →</a></figcaption></figure>
   </div>
 </section>
 
@@ -102,11 +116,11 @@ shutdown = obskitpy.setup("meu-servico")</code></pre>
       <pre data-lang="python"><code class="language-python">import logging, obskitpy
 
 log = logging.getLogger(__name__)
-shutdown = obskitpy.setup("meu-servico")      # logs + traces + métricas
+shutdown = obskitpy.setup("meu-servico")   # logs+traces+métricas
 
 pedidos = obskitpy.meter("pedidos").create_counter("pedidos.processados")
 
-@obskitpy.traced()                             # um span por chamada
+@obskitpy.traced()                          # um span por chamada
 def processar(item):
     ...
 
@@ -114,10 +128,10 @@ try:
     processar(x)
     pedidos.add(1, {"status": "success"})
 except Exception:
-    log.exception("falhou")                    # error.type, error.origin, error.chain
+    log.exception("falhou")                 # + error.type/origin
     pedidos.add(1, {"status": "failure"})
 
-shutdown()                                     # descarrega os dados pendentes</code></pre>
+shutdown()                                  # descarrega os pendentes</code></pre>
     </div>
     <figure class="shot-wrap" style="margin:0">
       <div class="shot"><img src="assets/images/dashboard-saude.png" alt="Dashboard base gerado pelo obskitpy" loading="lazy"></div>
@@ -133,6 +147,8 @@ shutdown()                                     # descarrega os dados pendentes</
     <h2>Do erro ao trace, e dos dados ao painel</h2>
     <p class="sub">Capturas reais do exemplo que extrai as notícias da Prefeitura de São Paulo. Clique para ampliar.</p>
     <div class="gallery">
+      <figure><div class="shot"><img src="assets/images/dash-traces.png" alt="Waterfall de uma execução no dash-obskitpy" loading="lazy"></div><figcaption class="shot-cap">dash-obskitpy: o waterfall de uma execução, com as falhas em vermelho.</figcaption></figure>
+      <figure><div class="shot"><img src="assets/images/cli-init.png" alt="Assistente obskitpy init no terminal" loading="lazy"></div><figcaption class="shot-cap">A CLI: assistente com cores, spinners e checagem do ambiente.</figcaption></figure>
       <figure><div class="shot"><img src="assets/images/investigar-trace.png" alt="Spans de uma execução com erro no Discover" loading="lazy"></div><figcaption class="shot-cap">Investigue um erro pelo <code>trace_id</code>: veja qual operação falhou.</figcaption></figure>
       <figure><div class="shot"><img src="assets/images/dashboard-dados.png" alt="Painéis com os dados extraídos" loading="lazy"></div><figcaption class="shot-cap">Dados de negócio ao lado da saúde do robô.</figcaption></figure>
     </div>

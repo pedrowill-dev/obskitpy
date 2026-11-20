@@ -22,7 +22,7 @@ DESC = "Observabilidade para automações Python: logs, traces e métricas num d
 
 NAV = [
     ("Começar", [("inicio-rapido", "Início rápido")]),
-    ("Referência", [("guia-obskitpy", "CLI e biblioteca"), ("dashboards", "Dashboards")]),
+    ("Referência", [("guia-obskitpy", "CLI e biblioteca"), ("dash-obskitpy", "dash-obskitpy"), ("dashboards", "Dashboards (Kibana)")]),
     ("Exemplos", [("exemplo", "Notícias da Prefeitura de SP")]),
     ("Entenda", [("arquitetura", "Arquitetura"), ("solucao-de-problemas", "Solução de problemas")]),
     ("Mantenedores", [("publicando", "Publicando no PyPI")]),

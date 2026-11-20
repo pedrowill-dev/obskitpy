@@ -21,10 +21,28 @@ O Elasticsearch leva 30–60 s para ficar saudável e o Kibana mais um pouco. A 
 Se estourar, veja `docker compose -p obskitpy-<servico> logs elasticsearch kibana` (memória insuficiente é a causa
 mais comum — dê pelo menos 4 GB à VM do Docker).
 
+## O `obskitpy init` não sobe a stack
+
+Rode `obskitpy doctor`: ele checa Docker, Compose v2, se o daemon responde, a memória disponível para o Docker
+(o Elasticsearch pede ~2 GB livres; recomendado ≥ 4 GB) e as portas. O `init` também faz essa checagem e,
+se faltar o Docker, cria os arquivos mesmo assim para você subir depois com `obskitpy up`.
+
+## O dash-obskitpy abre mas não mostra dados
+
+- A mensagem **"Não consegui falar com o Elasticsearch"** indica a stack parada: `obskitpy status` e `obskitpy up`.
+- **"Ainda sem dados para <serviço>"**: o nome em `obskitpy.setup("...")` precisa ser o `OBSKITPY_SERVICE` do
+  `observability/.env`. Rode `python obskitpy_demo.py` (gerado pelo `init --demo`) para ver dados na hora.
+- Confira o período no canto superior direito (15 min, 1 h, ...).
+
+## Quero trocar entre Kibana e dash-obskitpy
+
+`obskitpy init --force --local kibana|dash-obskitpy|ambos` e depois `obskitpy up`. Os dados no Elasticsearch
+continuam; só muda o que sobe. (`--force` recria `observability/`: guarde o seu `dashboard.ndjson` se o editou.)
+
 ## Porta já em uso
 
-Outra stack (ou outro programa) usa 9200/5601/4317/4318. Derrube a outra (`obskitpy down` nela) ou recrie com portas
-diferentes: `obskitpy init --force --kibana-port 5700 --es-port 9300 --otlp-grpc-port 4320 --otlp-http-port 4321`
+Outra stack (ou outro programa) usa 9200/5601/8600/4317/4318. O `init` já escolhe a próxima porta livre sozinho
+(e avisa). Para escolher na mão, derrube a outra (`obskitpy down` nela) ou recrie com portas diferentes: `obskitpy init --force --kibana-port 5700 --es-port 9300 --otlp-grpc-port 4320 --otlp-http-port 4321`
 e defina `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4320` no processo Python.
 
 ## Os painéis estão vazios

@@ -13,13 +13,19 @@ O endpoint vem de OTEL_EXPORTER_OTLP_ENDPOINT (padrão http://localhost:4317).
 import functools
 import logging
 import os
+from importlib.metadata import PackageNotFoundError, version as _version
 
 from opentelemetry import metrics, trace
 from opentelemetry.trace import Status, StatusCode
 
 from .errors import error_attributes, error_chain
 
-__all__ = ["setup", "traced", "tracer", "meter", "error_chain", "error_attributes"]
+try:
+    __version__ = _version("obskitpy")
+except PackageNotFoundError:  # rodando do código-fonte sem instalar
+    __version__ = "0.0.0"
+
+__all__ = ["__version__", "setup", "traced", "tracer", "meter", "error_chain", "error_attributes"]
 
 _NOISY_LOGGERS = ("urllib3", "elastic_transport", "opentelemetry")
 

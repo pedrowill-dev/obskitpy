@@ -21,19 +21,36 @@ uv init && uv add "obskitpy[requests]"      # com uv (recomendado)
 # versão em desenvolvimento: uv add "obskitpy[requests] @ git+https://github.com/pedrowill-dev/obskitpy.git#subdirectory=obskitpy"
 ```
 
-## 3. Criar a stack e o dashboard
+## 3. Rodar o assistente
 
 > Com uv, prefixe os comandos com `uv run` (ex.: `uv run obskitpy init`); com pip, ative o venv antes.
 
 ```bash
-obskitpy init        # nome do serviço = nome da pasta; use --service para escolher
-obskitpy up          # ~1 min na primeira vez (baixa as imagens)
+obskitpy init
 ```
 
-O `init` cria a pasta `observability/` no projeto (veja [o que é cada arquivo](guia-obskitpy.md#o-que-o-init-cria)).
-O `up` sobe os containers, espera ficarem saudáveis e importa o dashboard no Kibana. Ao final imprime o link.
+O assistente conversa com você, checa o ambiente e faz o resto:
 
-Portas diferentes? `obskitpy init --kibana-port 5700 --es-port 9300 --otlp-grpc-port 4320 --otlp-http-port 4321`.
+![Assistente do obskitpy init no terminal](images/cli-init.png)
+
+1. **Nome do serviço** (padrão: o nome da pasta).
+2. **Onde você quer visualizar os logs?**
+   - **Kibana**: completo, para explorar a fundo e montar painéis próprios.
+   - **dash-obskitpy**: dashboard próprio, leve e direto ao ponto, sem Kibana (sobe mais rápido).
+   - **Os dois**: dash-obskitpy no dia a dia e Kibana para investigar.
+3. **Portas**: se alguma estiver ocupada, ele escolhe a próxima livre e avisa.
+4. **Subir a stack agora?** Mostra o progresso e espera tudo ficar saudável.
+5. **Rodar um app de exemplo?** Gera `obskitpy_demo.py` e o executa, para o dashboard já nascer com dados.
+6. **Abrir no navegador?**
+
+Prefere sem perguntas (scripts, CI)? Escolha tudo por flags:
+
+```bash
+obskitpy init --service meu-servico --local dash-obskitpy --yes --up --demo
+```
+
+Algo falhou? `obskitpy doctor` mostra o que falta (Docker, Compose, memória, portas).
+Mais detalhes em [CLI e biblioteca](guia-obskitpy.md) e [dash-obskitpy](dash-obskitpy.md).
 
 ## 4. Instrumentar o código
 
@@ -68,11 +85,12 @@ shutdown()      # sempre chame antes de encerrar: descarrega logs/traces/métric
 
 ## 5. Ver o resultado
 
-Rode o script e abra o dashboard (`obskitpy open` ou o link impresso pelo `up`):
+Rode o script e abra o dashboard com `obskitpy open` (ou o link impresso pelo `up`):
 
-```
-http://localhost:5601/app/dashboards#/view/<servico>-observability
-```
+| Você escolheu | Endereço |
+|---|---|
+| dash-obskitpy | `http://localhost:8600` |
+| Kibana | `http://localhost:5601/app/dashboards#/view/<servico>-observability` |
 
 ![Dashboard base com os painéis de saúde](images/dashboard-saude.png)
 
