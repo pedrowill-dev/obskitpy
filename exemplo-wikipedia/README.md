@@ -1,6 +1,6 @@
 # RPA Wikipedia com observabilidade (OpenTelemetry + Elasticsearch + Kibana)
 
-> Protótipo original, com a stack montada à mão. Para novos projetos use o [`obskit`](../obskit/README.md).
+> Protótipo original, com a stack montada à mão. Para novos projetos use o [`obskitpy`](../obskitpy/README.md).
 
 ```
 rpa (Python) ──OTLP/gRPC──▶ otel-collector ──▶ Elasticsearch ◀── Kibana (dashboard)

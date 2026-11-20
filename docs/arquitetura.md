@@ -5,18 +5,18 @@
 ```
  seu processo Python                 docker compose (observability/)
 ┌──────────────────────┐   OTLP/gRPC   ┌────────────────┐        ┌───────────────┐      ┌────────┐
-│ obskit.setup(...)    │ ────────────▶ │ OTel Collector │ ─────▶ │ Elasticsearch │ ◀──── │ Kibana │
+│ obskitpy.setup(...)    │ ────────────▶ │ OTel Collector │ ─────▶ │ Elasticsearch │ ◀──── │ Kibana │
 │  logs / traces /     │  :4317        │  (contrib)     │  modo  │  data streams │      │  :5601 │
 │  métricas            │               └────────────────┘  otel  └───────────────┘      └────────┘
 │                      │ ─── dados extraídos (opcional, índice próprio) ──────▲
 └──────────────────────┘
         ▲
-        └── obskit CLI: init (gera arquivos) · up (docker compose + importa dashboard) · export/apply
+        └── obskitpy CLI: init (gera arquivos) · up (docker compose + importa dashboard) · export/apply
 ```
 
 ## Componentes
 
-**Biblioteca `obskit`** (`obskit/src/obskit/__init__.py`)
+**Biblioteca `obskitpy`** (`obskitpy/src/obskitpy/__init__.py`)
 Configura o SDK do OpenTelemetry (três exportadores OTLP/gRPC), liga o `logging` ao pipeline de logs e adiciona
 um filtro que enriquece logs com exceção (`error.type`, `error.origin`, `error.chain`). Não prende você a nada
 proprietário: `tracer()` e `meter()` devolvem objetos do OpenTelemetry padrão.
@@ -33,8 +33,8 @@ Guarda também o índice de dados de negócio do seu robô, se houver.
 Mostra o dashboard. Os objetos (data views, visualizações, buscas, dashboard) são importados pela API de
 *saved objects* — o que torna o dashboard um arquivo versionável.
 
-**CLI `obskit`** (`obskit/src/obskit/cli.py`)
-Gera os arquivos de `observability/`, chama `docker compose` (projeto nomeado `obskit-<servico>`), espera o Kibana
+**CLI `obskitpy`** (`obskitpy/src/obskitpy/cli.py`)
+Gera os arquivos de `observability/`, chama `docker compose` (projeto nomeado `obskitpy-<servico>`), espera o Kibana
 ficar disponível e importa o `dashboard.ndjson`. Usa apenas a biblioteca padrão para falar com o Kibana.
 
 ## Decisões de projeto

@@ -11,7 +11,7 @@ class KibanaError(RuntimeError):
 
 
 def _request(url: str, data: bytes | None = None, headers: dict | None = None, timeout: int = 60) -> bytes:
-    req = urllib.request.Request(url, data=data, headers={"kbn-xsrf": "obskit", **(headers or {})})
+    req = urllib.request.Request(url, data=data, headers={"kbn-xsrf": "obskitpy", **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read()

@@ -1,4 +1,4 @@
-"""Robô que extrai as notícias de https://prefeitura.sp.gov.br/noticias, instrumentado com obskit.
+"""Robô que extrai as notícias de https://prefeitura.sp.gov.br/noticias, instrumentado com obskitpy.
 
 Variáveis de ambiente:
   ELASTICSEARCH_URL       (padrão http://localhost:9200)
@@ -11,15 +11,15 @@ import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-import obskit
+import obskitpy
 from opentelemetry.trace import Status, StatusCode
 
 from . import client, parser
 from .store import Store
 
 log = logging.getLogger("noticias_sp")
-tracer = obskit.tracer("noticias_sp")
-_meter = obskit.meter("noticias_sp")
+tracer = obskitpy.tracer("noticias_sp")
+_meter = obskitpy.meter("noticias_sp")
 processed = _meter.create_counter("noticias.processadas", unit="{noticia}", description="Notícias por status")
 duration = _meter.create_histogram("noticias.duracao", unit="ms", description="Duração por notícia")
 
@@ -77,7 +77,7 @@ def run(store: Store, days: int) -> None:
 
 
 def main() -> None:
-    shutdown = obskit.setup("noticias-sp")
+    shutdown = obskitpy.setup("noticias-sp")
     store = Store(os.getenv("ELASTICSEARCH_URL", "http://localhost:9200"))
     store.ensure_index()
     days = int(os.getenv("DIAS", "7"))

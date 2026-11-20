@@ -1,20 +1,20 @@
-"""Painéis próprios do projeto, somados ao dashboard base do obskit.
+"""Painéis próprios do projeto, somados ao dashboard base do obskitpy.
 
 Fluxo do dev: edite as listas abaixo e rode
-    python observability/extend_dashboard.py && obskit dashboard apply
-O arquivo é a fonte da verdade: o ndjson é regerado do zero (base do obskit + painéis daqui).
-Prefere montar no Kibana? Use `obskit dashboard export` e não rode este script depois.
+    python observability/extend_dashboard.py && obskitpy dashboard apply
+O arquivo é a fonte da verdade: o ndjson é regerado do zero (base do obskitpy + painéis daqui).
+Prefere montar no Kibana? Use `obskitpy dashboard export` e não rode este script depois.
 """
 import json
 from pathlib import Path
 
-from obskit.dashboard import (KIBANA_VERSION, build, agg, chart_vis, date_histogram, metric_vis, ref,
+from obskitpy.dashboard import (KIBANA_VERSION, build, agg, chart_vis, date_histogram, metric_vis, ref,
                               search_source, table_vis, terms)
 
 FILE = Path(__file__).with_name("dashboard.ndjson")
 DASH_ID = "noticias-sp-observability"
 NEWS, METRICS = "noticias-sp-news", "noticias-sp-metrics"
-Y0 = 50  # abaixo dos painéis do obskit (que ocupam y 0..50)
+Y0 = 50  # abaixo dos painéis do obskitpy (que ocupam y 0..50)
 
 DATA_VIEWS = [
     (NEWS, "Notícias SP", "noticias-sp", "published_at"),

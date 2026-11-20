@@ -4,7 +4,7 @@ on:
   pull_request:
 
 jobs:
-  obskit:
+  obskitpy:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -14,8 +14,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install -e "./obskit[requests,test]"
-      - run: pytest obskit/tests
+      - run: pip install -e "./obskitpy[requests,test]"
+      - run: pytest obskitpy/tests
 
   exemplo-noticias-sp:
     runs-on: ubuntu-latest

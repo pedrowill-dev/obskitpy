@@ -1,4 +1,4 @@
-# Gerado pelo obskit. Ambiente local: segurança do Elasticsearch desligada, portas só em 127.0.0.1.
+# Gerado pelo obskitpy. Ambiente local: segurança do Elasticsearch desligada, portas só em 127.0.0.1.
 # Portas e serviço vêm do .env desta pasta.
 services:
   elasticsearch:

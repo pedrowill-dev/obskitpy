@@ -1,4 +1,4 @@
-# Gerado pelo obskit. Modo "otel": data streams logs-/traces-/metrics-generic.otel-default (ES 8.16+).
+# Gerado pelo obskitpy. Modo "otel": data streams logs-/traces-/metrics-generic.otel-default (ES 8.16+).
 receivers:
   otlp:
     protocols:

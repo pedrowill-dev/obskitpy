@@ -1,4 +1,4 @@
--e ../obskit[requests]
+-e ../obskitpy[requests]
 requests==2.32.3
 beautifulsoup4==4.12.3
 elasticsearch==8.17.0

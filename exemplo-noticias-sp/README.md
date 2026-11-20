@@ -1,8 +1,8 @@
-# Notícias da Prefeitura de SP com observabilidade (exemplo do obskit)
+# Notícias da Prefeitura de SP com observabilidade (exemplo do obskitpy)
 
 Robô que extrai as notícias de https://prefeitura.sp.gov.br/noticias, grava no Elasticsearch (índice `noticias-sp`)
 e mostra tudo num dashboard do Kibana: dados extraídos **e** saúde do robô (logs, traces, métricas, erros).
-Serve de exemplo de como plugar o [`obskit`](../obskit/README.md) num projeto Python.
+Serve de exemplo de como plugar o [`obskitpy`](../obskitpy/README.md) num projeto Python.
 
 ![Dashboard completo](../docs/images/dashboard-completo.png)
 
@@ -20,8 +20,8 @@ O id do documento é o id da Prefeitura, então rodar de novo **atualiza** em ve
 ## Rodar
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # instala o obskit local + dependências
-.venv/bin/obskit up                                                   # stack + dashboard (1ª vez ~1 min)
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # instala o obskitpy local + dependências
+.venv/bin/obskitpy up                                                   # stack + dashboard (1ª vez ~1 min)
 .venv/bin/python -m noticias_sp                                       # extrai os últimos 7 dias
 ```
 
@@ -33,31 +33,31 @@ Dashboard: http://localhost:5601/app/dashboards#/view/noticias-sp-observability?
 | `RPA_INTERVAL_SECONDS` | `0` | `0` = roda uma vez; `>0` repete a cada N segundos |
 | `ELASTICSEARCH_URL` | `http://localhost:9200` | |
 
-Parar: `.venv/bin/obskit down` (`-v` apaga os dados).
+Parar: `.venv/bin/obskitpy down` (`-v` apaga os dados).
 
-## O que o obskit trouxe
+## O que o obskitpy trouxe
 
 Foi preciso só isto no código ([`noticias_sp/__main__.py`](noticias_sp/__main__.py)):
 
 ```python
-shutdown = obskit.setup("noticias-sp")        # logs + traces + métricas
-tracer = obskit.tracer("noticias_sp")         # spans: execucao > dia.processar > dia.baixar | noticia.processar > parse/salvar
-processed = obskit.meter(...).create_counter("noticias.processadas")   # métrica própria, por status
+shutdown = obskitpy.setup("noticias-sp")        # logs + traces + métricas
+tracer = obskitpy.tracer("noticias_sp")         # spans: execucao > dia.processar > dia.baixar | noticia.processar > parse/salvar
+processed = obskitpy.meter(...).create_counter("noticias.processadas")   # métrica própria, por status
 log.exception("falha ao processar notícia")   # já sai com error.type / error.origin / error.chain
 ```
 
 Os painéis do topo do dashboard (logs, erros, execuções, duração dos spans, erros por tipo/origem, lista de erros com `trace_id`)
-vêm do `obskit init`. Os de baixo (notícias extraídas, publicações por dia, maiores matérias, tabela de notícias,
+vêm do `obskitpy init`. Os de baixo (notícias extraídas, publicações por dia, maiores matérias, tabela de notícias,
 notícias por status) são deste projeto: [`observability/extend_dashboard.py`](observability/extend_dashboard.py).
 
 ## Evoluir o dashboard
 
 ```bash
 # edite observability/extend_dashboard.py (listas VISUALIZATIONS / SEARCH) e:
-.venv/bin/python observability/extend_dashboard.py && .venv/bin/obskit dashboard apply
+.venv/bin/python observability/extend_dashboard.py && .venv/bin/obskitpy dashboard apply
 ```
 
-Prefere montar no Kibana? Crie os painéis lá, rode `obskit dashboard export` e versione o `dashboard.ndjson`
+Prefere montar no Kibana? Crie os painéis lá, rode `obskitpy dashboard export` e versione o `dashboard.ndjson`
 (neste caso não rode mais o `extend_dashboard.py`, que regera o arquivo do zero).
 
 ## Testes

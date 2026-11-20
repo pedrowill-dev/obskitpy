@@ -1,7 +1,7 @@
 """Dashboard base (genérico, por serviço) como saved objects do Kibana 8.x.
 
-O dev evolui o dashboard no próprio Kibana e grava com `obskit dashboard export`;
-este módulo só gera o ponto de partida do `obskit init`.
+O dev evolui o dashboard no próprio Kibana e grava com `obskitpy dashboard export`;
+este módulo só gera o ponto de partida do `obskitpy init`.
 """
 import json
 
@@ -158,7 +158,7 @@ def build(service: str) -> list[dict]:
         "type": "dashboard", "id": dashboard_id(service), "references": dash_refs,
         "attributes": {
             "title": f"{service} - Observabilidade",
-            "description": "Logs, traces e erros do serviço. Evolua este dashboard no Kibana e rode `obskit dashboard export`.",
+            "description": "Logs, traces e erros do serviço. Evolua este dashboard no Kibana e rode `obskitpy dashboard export`.",
             "hits": 0, "version": 1, "panelsJSON": json.dumps(panels),
             "optionsJSON": json.dumps({"useMargins": True, "syncColors": False, "syncCursor": True,
                                        "syncTooltips": False, "hidePanelTitles": False}),

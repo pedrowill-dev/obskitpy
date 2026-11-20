@@ -1,4 +1,4 @@
-"""obskit: observabilidade (OpenTelemetry + Elasticsearch + Kibana) em qualquer projeto Python."""
+"""obskitpy: observabilidade (OpenTelemetry + Elasticsearch + Kibana) em qualquer projeto Python."""
 import argparse
 import re
 import shutil
@@ -13,9 +13,9 @@ from . import dashboard, kibana
 DEFAULT_DIR = "observability"
 DEFAULT_PORTS = {"ES_PORT": 9200, "KIBANA_PORT": 5601, "OTLP_GRPC_PORT": 4317, "OTLP_HTTP_PORT": 4318}
 TEMPLATE_FILES = ("docker-compose.yml", "otel-collector-config.yaml")
-SNIPPET = '''import obskit
+SNIPPET = '''import obskitpy
 
-shutdown = obskit.setup("{service}")   # no início do programa
+shutdown = obskitpy.setup("{service}")   # no início do programa
 # ... seu código; use logging normalmente: log.exception("falhou") já vai com error.type/origin/chain
 shutdown()                             # ao encerrar, descarrega os dados pendentes'''
 
@@ -28,7 +28,7 @@ class CliError(Exception):
 
 def read_env(path: Path) -> dict[str, str]:
     if not path.exists():
-        raise CliError(f"{path} não existe. Rode `obskit init` neste projeto primeiro.")
+        raise CliError(f"{path} não existe. Rode `obskitpy init` neste projeto primeiro.")
     env = {}
     for line in path.read_text().splitlines():
         if "=" in line and not line.lstrip().startswith("#"):
@@ -42,7 +42,7 @@ def kibana_url(env: dict[str, str]) -> str:
 
 
 def dashboard_url(env: dict[str, str]) -> str:
-    return f"{kibana_url(env)}/app/dashboards#/view/{dashboard.dashboard_id(env['OBSKIT_SERVICE'])}"
+    return f"{kibana_url(env)}/app/dashboards#/view/{dashboard.dashboard_id(env['OBSKITPY_SERVICE'])}"
 
 
 # --- comandos ------------------------------------------------------------------------------
@@ -57,17 +57,17 @@ def cmd_init(args) -> None:
 
     obs.mkdir(parents=True, exist_ok=True)
     for name in TEMPLATE_FILES:
-        (obs / name).write_text(resources.files("obskit.templates").joinpath(name).read_text())
+        (obs / name).write_text(resources.files("obskitpy.templates").joinpath(name).read_text())
     ports = {key: getattr(args, key.lower()) for key in DEFAULT_PORTS}
-    lines = ["# Gerado pelo obskit init; usado pelo docker compose e pela CLI.", f"OBSKIT_SERVICE={service}"]
+    lines = ["# Gerado pelo obskitpy init; usado pelo docker compose e pela CLI.", f"OBSKITPY_SERVICE={service}"]
     (obs / ".env").write_text("\n".join(lines + [f"{k}={v}" for k, v in ports.items()]) + "\n")
     (obs / "dashboard.ndjson").write_text(dashboard.to_ndjson(dashboard.build(service)), encoding="utf-8")
 
     print(f"Criado {obs}/ para o serviço '{service}':")
     print("  docker-compose.yml  otel-collector-config.yaml  dashboard.ndjson  .env")
     print("\nPróximos passos:")
-    print("  1. pip install obskit            # (ou 'obskit[requests]' p/ spans HTTP automáticos)")
-    print(f"  2. obskit up --dir {obs}" if str(obs) != DEFAULT_DIR else "  2. obskit up")
+    print("  1. pip install obskitpy            # (ou 'obskitpy[requests]' p/ spans HTTP automáticos)")
+    print(f"  2. obskitpy up --dir {obs}" if str(obs) != DEFAULT_DIR else "  2. obskitpy up")
     print("  3. No seu código:\n")
     print("     " + SNIPPET.format(service=service).replace("\n", "\n     "))
 
@@ -76,7 +76,7 @@ def compose(obs: Path, env: dict[str, str], *args: str) -> None:
     if shutil.which("docker") is None:
         raise CliError("docker não encontrado no PATH.")
     cmd = ["docker", "compose", "--project-directory", str(obs), "-f", str(obs / "docker-compose.yml"),
-           "-p", f"obskit-{env['OBSKIT_SERVICE']}", *args]
+           "-p", f"obskitpy-{env['OBSKITPY_SERVICE']}", *args]
     if subprocess.run(cmd).returncode != 0:
         raise CliError("docker compose falhou (o Docker/Colima está rodando?).")
 
@@ -124,9 +124,9 @@ def cmd_dashboard_apply(args) -> None:
 def cmd_dashboard_export(args) -> None:
     obs = Path(args.dir)
     env = read_env(obs / ".env")
-    ndjson = kibana.export_dashboard(kibana_url(env), dashboard.dashboard_id(env["OBSKIT_SERVICE"]))
+    ndjson = kibana.export_dashboard(kibana_url(env), dashboard.dashboard_id(env["OBSKITPY_SERVICE"]))
     if not ndjson.strip():
-        raise CliError("o Kibana não devolveu o dashboard (foi apagado? rode `obskit dashboard apply`).")
+        raise CliError("o Kibana não devolveu o dashboard (foi apagado? rode `obskitpy dashboard apply`).")
     (obs / "dashboard.ndjson").write_text(ndjson, encoding="utf-8")
     print(f"{obs}/dashboard.ndjson atualizado ({len(ndjson.splitlines())} objetos). Versione no git.")
 
@@ -134,7 +134,7 @@ def cmd_dashboard_export(args) -> None:
 # --- parser --------------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="obskit", description=__doc__)
+    parser = argparse.ArgumentParser(prog="obskitpy", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
     def command(name, fn, help_, **kw):

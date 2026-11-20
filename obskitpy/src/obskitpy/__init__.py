@@ -1,9 +1,9 @@
 """Uso:
 
-    import obskit
-    shutdown = obskit.setup("meu-servico")     # logs, traces e métricas via OTLP
+    import obskitpy
+    shutdown = obskitpy.setup("meu-servico")     # logs, traces e métricas via OTLP
 
-    @obskit.traced()                            # span por chamada
+    @obskitpy.traced()                            # span por chamada
     def processar(item): ...
 
     log.exception("falhou")                     # já sai com error.type/origin/chain
@@ -111,7 +111,7 @@ def setup(service_name: str, *, environment: str | None = None, version: str = "
             from opentelemetry.instrumentation.requests import RequestsInstrumentor
             RequestsInstrumentor().instrument()
         except ImportError:
-            pass  # extra opcional: pip install "obskit[requests]"
+            pass  # extra opcional: pip install "obskitpy[requests]"
 
     def shutdown():
         root.removeHandler(handler)

@@ -2,7 +2,7 @@
 
 ## O dashboard base
 
-O `obskit init` gera o dashboard `<servico>-observability` (id fixo, então reimportar sobrescreve em vez de duplicar).
+O `obskitpy init` gera o dashboard `<servico>-observability` (id fixo, então reimportar sobrescreve em vez de duplicar).
 Todos os painéis filtram por `resource.attributes.service.name : "<servico>"`.
 
 | Painel | Fonte | O que mostra |
@@ -39,10 +39,10 @@ Há dois caminhos. Escolha **um** por projeto para não sobrescrever o trabalho 
 1. Abra o dashboard → **Edit** → adicione ou ajuste painéis (Lens, TSVB, buscas salvas…) → **Save**.
 2. Grave no repositório:
    ```bash
-   obskit dashboard export
+   obskitpy dashboard export
    git add observability/dashboard.ndjson && git commit -m "dashboard: novo painel X"
    ```
-3. Em outra máquina ou no CI, `obskit up` (ou `obskit dashboard apply`) recria o dashboard idêntico.
+3. Em outra máquina ou no CI, `obskitpy up` (ou `obskitpy dashboard apply`) recria o dashboard idêntico.
 
 O `export` inclui o dashboard e tudo que ele referencia (visualizações, buscas, data views).
 
@@ -52,16 +52,16 @@ Gere o `dashboard.ndjson` por um script Python partindo do dashboard base — o
 [exemplo das notícias](../exemplo-noticias-sp/observability/extend_dashboard.py) faz isso:
 
 ```python
-from obskit.dashboard import build, agg, metric_vis, chart_vis, table_vis, terms, date_histogram, ref, search_source
+from obskitpy.dashboard import build, agg, metric_vis, chart_vis, table_vis, terms, date_histogram, ref, search_source
 
-objects = build("meu-servico")          # painéis base do obskit
+objects = build("meu-servico")          # painéis base do obskitpy
 # ... acrescente data views, visualizações e painéis, ajustando o dashboard.panelsJSON e references
 ```
 
-Depois: `python observability/extend_dashboard.py && obskit dashboard apply`.
+Depois: `python observability/extend_dashboard.py && obskitpy dashboard apply`.
 O script regera o arquivo do zero; **não** rode `export` por cima, ou as edições feitas no Kibana substituem o script.
 
-Helpers disponíveis em `obskit.dashboard`: `agg`, `terms`, `date_histogram`, `metric_vis`, `chart_vis`,
+Helpers disponíveis em `obskitpy.dashboard`: `agg`, `terms`, `date_histogram`, `metric_vis`, `chart_vis`,
 `table_vis`, `search_source`, `ref`, `build`, `to_ndjson`.
 
 ## Misturando dados de negócio

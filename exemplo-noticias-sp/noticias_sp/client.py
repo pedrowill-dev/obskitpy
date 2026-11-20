@@ -7,7 +7,7 @@ import logging
 import time
 from datetime import date
 
-import obskit
+import obskitpy
 import requests
 
 log = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ SITE_ID = 34276       # site da Prefeitura
 HEADERS = {"User-Agent": "noticias-sp-observabilidade/1.0 (projeto de estudo)"}
 MAX_ATTEMPTS = 3
 
-fetch_retries = obskit.meter("noticias_sp").create_counter(
+fetch_retries = obskitpy.meter("noticias_sp").create_counter(
     "noticias.fetch.retries", unit="{retry}", description="Tentativas repetidas de download")
 
 
