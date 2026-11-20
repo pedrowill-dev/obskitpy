@@ -119,10 +119,14 @@ def test_init_wizard_asks_name(tmp_path, monkeypatch, capsys):
     answers = iter(["meu-robo", "1", "n"])  # nome; onde visualizar (1=Kibana); "Alterar as portas?" não
     monkeypatch.setattr("builtins.input", lambda *_: next(answers))
     monkeypatch.setattr(cli, "doctor_checks", lambda ports=None: [("Docker", "fail", "ausente")])
+
+    def not_ready():
+        raise cli.docker.DockerProblem("sem docker", "instale")
+    monkeypatch.setattr(cli.docker, "ensure_ready", not_ready)
     main(["init"])
     out = capsys.readouterr().out
     assert "OBSKITPY_SERVICE=meu-robo" in (tmp_path / "observability" / ".env").read_text()
-    assert "falta o Docker" in out and 'obskitpy.setup("meu-robo")' in out
+    assert "ainda não está pronto" in out and 'obskitpy.setup("meu-robo")' in out
 
 
 def test_doctor_fails_without_docker(monkeypatch):
@@ -175,3 +179,86 @@ def test_dash_app_has_no_unfilled_placeholders():
     from importlib import resources
     js = resources.files("obskitpy.templates").joinpath("dash/app.js").read_text()
     assert "es/${index}/${endpoint}" in js and "__SERVICE__" not in js
+
+
+def test_find_compose_falls_back_to_standalone(monkeypatch):
+    monkeypatch.setattr(cli.docker, "_compose", None)
+    monkeypatch.setattr(cli.docker.shutil, "which", lambda n: f"/usr/bin/{n}")
+    monkeypatch.setattr(cli.docker, "_ok", lambda c: c[0] == "docker-compose")  # `docker compose` quebrado
+    assert cli.docker.find_compose() == ["docker-compose"]
+    monkeypatch.setattr(cli.docker, "_compose", None)
+    monkeypatch.setattr(cli.docker, "_ok", lambda c: True)
+    assert cli.docker.find_compose() == ["docker", "compose"]
+
+
+def test_busy_ports_parsed_from_compose_errors():
+    text = "Error response from daemon: Bind for 127.0.0.1:9200 failed: port is already allocated\n" \
+           "ports are not available: exposing port TCP 127.0.0.1:5601 -> 0.0.0.0:0: listen tcp 127.0.0.1:5601: bind: address already in use"
+    assert cli.docker.busy_ports(text) == [9200, 5601]
+    assert cli.docker.CRED_RE.search("error getting credentials - err: exec: \"docker-credential-desktop\": not found")
+
+
+def test_reassign_busy_ports_rewrites_env(tmp_path):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--yes"])
+    env = cli.read_env(obs / ".env")
+    notes = cli.reassign_busy_ports(obs, env, [int(env["ES_PORT"])])
+    assert notes and "Elasticsearch" in notes[0]
+    assert cli.read_env(obs / ".env")["ES_PORT"] != str(9200) or env["ES_PORT"] != "9200"
+    assert "# Gerado pelo obskitpy init" in (obs / ".env").read_text()  # comentário preservado
+
+
+def test_aliases_and_typos(capsys):
+    assert cli.normalize_argv(["start"]) == ["up"]
+    assert cli.normalize_argv(["upp", "--dir", "x"]) == ["up", "--dir", "x"]
+    assert cli.normalize_argv(["xyz"]) == ["xyz"]
+    assert cli.normalize_argv(["up"]) == ["up"] and cli.normalize_argv(["--version"]) == ["--version"]
+
+
+def test_unknown_command_suggests(capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["rnu"])
+    out = capsys.readouterr().out
+    assert exc.value.code == 2 and "Não conheço" in out and "run" in out and "Traceback" not in out
+
+
+def test_commands_without_init_explain_instead_of_crashing(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["up", "--dir", str(tmp_path / "nada")])
+    out = capsys.readouterr().out
+    assert exc.value.code == 1 and "init" in out
+
+
+def test_run_points_program_at_the_stack(tmp_path, monkeypatch):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--yes"])
+    monkeypatch.setattr(cli, "stack_reachable", lambda env: True)
+    seen = {}
+
+    def fake_call(command, env):
+        seen["cmd"], seen["endpoint"] = command, env["OTEL_EXPORTER_OTLP_ENDPOINT"]
+        return 0
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", lambda *a, **k: type("R", (), {"read": lambda self: b""})())
+    with pytest.raises(SystemExit) as exc:
+        main(["run", "--dir", str(obs), "--", "python", "app.py"])
+    assert exc.value.code == 0 and seen["cmd"][-1] == "app.py" and seen["endpoint"].startswith("http://localhost:")
+
+
+def test_run_without_command_explains(tmp_path, monkeypatch):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--yes"])
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit):
+        main(["run", "--dir", str(obs)])
+
+
+def test_prog_picks_a_usable_invocation(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, "which", lambda n: "/x/obskitpy" if n == "obskitpy" else None)
+    assert cli.prog() == "obskitpy"
+    monkeypatch.setattr(cli.shutil, "which", lambda n: "/x/uv" if n == "uv" else None)
+    (tmp_path / "pyproject.toml").write_text("")
+    assert cli.prog() == "uv run obskitpy"
+    monkeypatch.setattr(cli.shutil, "which", lambda n: None)
+    assert cli.prog() == "python -m obskitpy"

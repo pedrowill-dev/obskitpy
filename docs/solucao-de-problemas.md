@@ -21,6 +21,26 @@ O Elasticsearch leva 30–60 s para ficar saudável e o Kibana mais um pouco. A 
 Se estourar, veja `docker compose -p obskitpy-<servico> logs elasticsearch kibana` (memória insuficiente é a causa
 mais comum — dê pelo menos 4 GB à VM do Docker).
 
+## `zsh: command not found: obskitpy`
+
+O executável só existe dentro do ambiente do projeto. Use `uv run obskitpy ...` (uv), ative o venv (pip) ou
+`python -m obskitpy ...`. Para usar de qualquer lugar: `uv tool install obskitpy`.
+
+## Atualizar para a versão mais nova
+
+```bash
+uv add -U obskitpy          # uv (atualiza o pacote e o uv.lock)
+pip install -U obskitpy     # pip
+uvx obskitpy@latest init    # sem instalar nada
+```
+
+Versões antigas (0.1.x) não têm o assistente, o `run` nem as correções automáticas abaixo.
+
+## `unknown flag: --project-directory` ou `docker: unknown command: docker compose`
+
+O Docker CLI está sem o plugin do Compose v2. Nas versões novas o obskitpy resolve sozinho (usa o binário
+`docker-compose` se existir, ou oferece instalar com o Homebrew). Manualmente: `brew install docker-compose`.
+
 ## O `obskitpy init` não sobe a stack
 
 Rode `obskitpy doctor`: ele checa Docker, Compose v2, se o daemon responde, a memória disponível para o Docker

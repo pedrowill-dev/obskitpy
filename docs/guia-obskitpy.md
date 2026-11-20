@@ -13,10 +13,28 @@ Todos os comandos aceitam `--dir PASTA` (padrão: `observability`) e devem ser e
 | `obskitpy down [-v]` | Derruba a stack. `-v` apaga também os dados (volume do Elasticsearch). |
 | `obskitpy status` | Tabela dos containers (estado e portas) e os links dos dashboards. |
 | `obskitpy open [--ui kibana\|dash-obskitpy]` | Abre o dashboard no navegador (padrão: dash-obskitpy se existir, senão Kibana). |
+| `obskitpy run [--] COMANDO...` | **Roda o seu programa** já apontando para a stack (ex.: `obskitpy run python app.py`). Se a stack estiver parada, sobe antes. Sem comando, roda o `obskitpy_demo.py`. |
 | `obskitpy doctor` | Diagnostica Docker, Compose v2, memória do Docker e portas. |
 | `obskitpy dashboard apply` | Importa `observability/dashboard.ndjson` no Kibana (sobrescreve objetos com o mesmo id). |
 | `obskitpy dashboard export` | Grava no `dashboard.ndjson` o dashboard **como está no Kibana agora**. |
 | `obskitpy --version` | Mostra a versão. |
+
+### A CLI resolve em vez de falhar
+
+O objetivo é não parar num erro quando existe uma saída. O que é seguro é automático; o que instala ou inicia
+algo pede a sua confirmação.
+
+| Situação | O que o obskitpy faz |
+|---|---|
+| `docker compose` não existe, mas há o binário `docker-compose` | Usa o binário sozinho. |
+| Sem Compose v2 (macOS com Homebrew) | Oferece `brew install docker-compose` e segue. |
+| O Docker não responde, mas o Colima está de pé | Aponta o `DOCKER_HOST` para o socket do Colima. |
+| O Colima está parado | Oferece iniciá-lo (`colima start`). |
+| `docker-credential-desktop` não encontrado | Repete com uma configuração do Docker sem o credential helper. |
+| Porta ocupada ao subir | Escolhe a próxima livre, grava no `.env` e tenta de novo (uma porta por vez, se preciso). |
+| Comando com atalho ou erro de digitação (`start`, `ps`, `upp`) | Entende (`up`, `status`...) e avisa. Para os outros, sugere: "Você quis dizer…?". |
+| Pasta sem `observability/` | Oferece rodar o assistente `init` na hora. |
+| `obskitpy` fora do PATH | As dicas já aparecem como `uv run obskitpy ...` (ou `python -m obskitpy ...`). |
 
 A saída é colorida, com spinners e caixas. Ela respeita `NO_COLOR` e vira texto simples em pipes e CI
 (use `FORCE_COLOR=1` para forçar as cores).

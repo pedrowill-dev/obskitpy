@@ -49,7 +49,8 @@ Prefere sem perguntas (scripts, CI)? Escolha tudo por flags:
 obskitpy init --service meu-servico --local dash-obskitpy --yes --up --demo
 ```
 
-Algo falhou? `obskitpy doctor` mostra o que falta (Docker, Compose, memória, portas).
+Algo falhou? A CLI tenta resolver sozinha (portas ocupadas, Compose ausente, Colima parado) e o `obskitpy doctor`
+mostra o que falta (Docker, Compose, memória, portas).
 Mais detalhes em [CLI e biblioteca](guia-obskitpy.md) e [dash-obskitpy](dash-obskitpy.md).
 
 ## 4. Instrumentar o código
@@ -84,6 +85,12 @@ shutdown()      # sempre chame antes de encerrar: descarrega logs/traces/métric
 > pois os painéis filtram por ele.
 
 ## 5. Ver o resultado
+
+O jeito mais simples de rodar o seu programa já apontando para a stack (e subindo a stack, se ela estiver parada):
+
+```bash
+obskitpy run python app.py
+```
 
 Rode o script e abra o dashboard com `obskitpy open` (ou o link impresso pelo `up`):
 

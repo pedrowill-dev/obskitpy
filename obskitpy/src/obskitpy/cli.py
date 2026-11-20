@@ -1,5 +1,6 @@
 """obskitpy: observabilidade (OpenTelemetry + Elasticsearch + Kibana) em qualquer projeto Python."""
 import argparse
+import difflib
 import json
 import os
 import re
@@ -13,7 +14,7 @@ import webbrowser
 from importlib import resources
 from pathlib import Path
 
-from . import __version__, dashboard, kibana, ui
+from . import __version__, dashboard, docker, kibana, ui
 
 DEFAULT_DIR = "observability"
 DEFAULT_PORTS = {"ES_PORT": 9200, "KIBANA_PORT": 5601, "DASH_PORT": 8600, "OTLP_GRPC_PORT": 4317, "OTLP_HTTP_PORT": 4318}
@@ -35,11 +36,28 @@ class CliError(Exception):
         self.detail, self.hint = detail, hint
 
 
+class NotInitialized(CliError):
+    """A pasta ainda não tem o obskitpy (sem observability/.env)."""
+
+
+def prog() -> str:
+    """Como o usuário deve chamar a CLI aqui (`obskitpy`, `uv run obskitpy` ou `python -m obskitpy`)."""
+    if shutil.which("obskitpy"):
+        return "obskitpy"
+    if shutil.which("uv") and Path("pyproject.toml").exists():
+        return "uv run obskitpy"
+    return "python -m obskitpy"
+
+
+def cmd(text: str) -> str:
+    return f"{prog()} {text}"
+
+
 # --- configuração (.env na pasta observability/) -------------------------------------------
 
 def read_env(path: Path) -> dict[str, str]:
     if not path.exists():
-        raise CliError(f"{path} não existe.", hint="Rode `obskitpy init` neste projeto primeiro.")
+        raise NotInitialized("esta pasta ainda não tem o obskitpy.", hint=f"Rode `{cmd('init')}` aqui primeiro.")
     env = {}
     for line in path.read_text().splitlines():
         if "=" in line and not line.lstrip().startswith("#"):
@@ -88,7 +106,7 @@ def primary_url(env: dict[str, str]) -> str:
 def need_kibana(env: dict[str, str]) -> None:
     if not uses_kibana(env):
         raise CliError("este projeto usa só o dash-obskitpy, que não tem dashboard do Kibana para importar/exportar.",
-                       hint="Recrie com `obskitpy init --force --local ambos` se quiser o Kibana também.")
+                       hint=f"Recrie com `{cmd('init --force --local ambos')}` se quiser o Kibana também.")
 
 
 # --- ambiente ------------------------------------------------------------------------------
@@ -117,30 +135,37 @@ def _run(cmd: list[str], timeout: int = 15):
 def doctor_checks(ports: dict[str, int] | None = None) -> list[tuple[str, str, str]]:
     """[(nome, 'ok'|'warn'|'fail', detalhe)]"""
     checks = [("Python", "ok", sys.version.split()[0])]
-    docker = shutil.which("docker")
-    if not docker:
-        checks.append(("Docker", "fail", "não encontrado no PATH — instale o Docker Desktop ou o Colima"))
+    docker_bin = shutil.which("docker")
+    if not docker_bin:
+        checks.append(("Docker", "fail", "não encontrado — instale o Docker Desktop, ou no macOS: brew install colima docker docker-compose"))
         return checks
-    checks.append(("Docker", "ok", docker))
-    r = _run(["docker", "compose", "version", "--short"])
-    if r and r.returncode == 0:
-        checks.append(("Docker Compose v2", "ok", r.stdout.strip()))
+    checks.append(("Docker", "ok", docker_bin))
+    base = docker.find_compose()
+    if base:
+        r = docker.run(base + ["version", "--short"])
+        via = "" if base == ["docker", "compose"] else " (binário docker-compose)"
+        checks.append(("Docker Compose v2", "ok", (r.stdout.strip() if r and r.returncode == 0 else "ok") + via))
     else:
-        checks.append(("Docker Compose v2", "fail", "plugin `docker compose` ausente (brew install docker-compose)"))
-    r = _run(["docker", "info", "--format", "{{.ServerVersion}}|{{.MemTotal}}"])
+        checks.append(("Docker Compose v2", "fail", f"não encontrado — {docker.install_hint()}"))
+    r = docker.run(["docker", "info", "--format", "{{.ServerVersion}}|{{.MemTotal}}"])
+    via_colima = False
+    if not (r and r.returncode == 0 and "|" in r.stdout) and docker.use_colima_socket():
+        r = docker.run(["docker", "info", "--format", "{{.ServerVersion}}|{{.MemTotal}}"])
+        via_colima = True
     if r and r.returncode == 0 and "|" in r.stdout:
         version, _, mem = r.stdout.strip().partition("|")
-        checks.append(("Docker em execução", "ok", f"engine {version}"))
+        checks.append(("Docker em execução", "ok", f"engine {version}" + (" (via Colima)" if via_colima else "")))
         try:
             gb = int(mem) / 1024**3
             if gb < 3.5:
-                checks.append(("Memória do Docker", "warn", f"{gb:.1f} GB — o Elasticsearch pede ~2 GB livres; recomendado ≥ 4 GB"))
+                checks.append(("Memória do Docker", "warn", f"{gb:.1f} GB — o Elasticsearch pede ~2 GB livres; com Colima: colima stop && colima start --memory 6"))
             else:
                 checks.append(("Memória do Docker", "ok", f"{gb:.1f} GB"))
         except ValueError:
             pass
     else:
-        checks.append(("Docker em execução", "fail", "o daemon não responde — inicie o Docker Desktop ou rode `colima start`"))
+        fix = "colima start" if shutil.which("colima") else "abra o Docker Desktop"
+        checks.append(("Docker em execução", "fail", f"o daemon não responde — {fix}"))
     for key, port in (ports or {k: DEFAULT_PORTS[k] for k in ports_for("kibana")}).items():
         if port_free(port):
             checks.append((f"Porta {port} ({PORT_LABELS[key]})", "ok", "livre"))
@@ -159,13 +184,46 @@ def print_checks(checks: list[tuple[str, str, str]], only_problems: bool = False
 
 # --- docker compose ------------------------------------------------------------------------
 
-def compose(obs: Path, env: dict[str, str], args: list[str], on_line=None) -> str:
-    if shutil.which("docker") is None:
-        raise CliError("docker não encontrado no PATH.", hint="Rode `obskitpy doctor` para ver o que falta.")
-    cmd = ["docker", "compose", "--project-directory", str(obs), "-f", str(obs / "docker-compose.yml"),
-           "-p", f"obskitpy-{env['OBSKITPY_SERVICE']}", *args]
+def write_env(path: Path, env: dict[str, str]) -> None:
+    """Regrava o .env preservando comentários e a ordem das chaves."""
+    lines, seen = [], set()
+    for line in path.read_text().splitlines():
+        key = line.partition("=")[0].strip()
+        if "=" in line and not line.lstrip().startswith("#") and key in env:
+            lines.append(f"{key}={env[key]}")
+            seen.add(key)
+        else:
+            lines.append(line)
+    lines += [f"{k}={v}" for k, v in env.items() if k not in seen]
+    path.write_text("\n".join(lines) + "\n")
+
+
+def reassign_busy_ports(obs: Path, env: dict[str, str], busy: list[int]) -> list[str]:
+    """Troca no .env as portas que o Docker disse estar ocupadas. Devolve as mensagens do que mudou."""
+    changed, taken = [], {int(env[k]) for k in DEFAULT_PORTS if k in env}
+    for key in ports_for(env.get("OBSKITPY_LOCAL", "kibana")):
+        old = int(env[key])
+        if old in busy:
+            new = next_free_port(old + 1, taken)
+            env[key] = str(new)
+            taken.add(new)
+            changed.append(f"porta {old} ({PORT_LABELS[key]}) ocupada → usando {new}")
+    if changed:
+        write_env(obs / ".env", env)
+        if uses_dash(env):
+            write_dash(obs, env)
+    return changed
+
+
+def compose(obs: Path, env: dict[str, str], args: list[str], on_line=None, _retry: int = 8) -> str:
+    try:
+        base = docker.ensure_ready()
+    except docker.DockerProblem as exc:
+        raise CliError(str(exc), hint=exc.hint)
+    full = base + ["--project-directory", str(obs), "-f", str(obs / "docker-compose.yml"),
+                   "-p", f"obskitpy-{env['OBSKITPY_SERVICE']}", *args]
     run_env = {**os.environ, "COMPOSE_PROFILES": profiles_for(env.get("OBSKITPY_LOCAL", "kibana"))}
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=run_env)
+    proc = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=run_env)
     lines: list[str] = []
     for line in proc.stdout:
         line = line.rstrip()
@@ -173,10 +231,25 @@ def compose(obs: Path, env: dict[str, str], args: list[str], on_line=None) -> st
             lines.append(line)
             if on_line:
                 on_line(line)
-    if proc.wait() != 0:
-        raise CliError("o docker compose falhou.", detail="\n".join(lines[-25:]),
-                       hint="O Docker/Colima está rodando? Rode `obskitpy doctor` para diagnosticar.")
-    return "\n".join(lines)
+    if proc.wait() == 0:
+        return "\n".join(lines)
+    text = "\n".join(lines)
+    if _retry and docker.CRED_RE.search(text):  # credential helper do Docker Desktop ausente
+        docker.clean_docker_config()
+        ui.hint("O credential helper do Docker não foi encontrado; usando uma configuração limpa do Docker.")
+        return compose(obs, env, args, on_line, _retry=_retry - 1)
+    if _retry and "up" in args and docker.PORT_RE.search(text):  # porta ocupada
+        changed = reassign_busy_ports(obs, env, docker.busy_ports(text))
+        if changed:
+            for note in changed:
+                ui.hint(note)
+            try:
+                compose(obs, env, ["down"], None, _retry=0)  # libera o que subiu pela metade
+            except CliError:
+                pass
+            return compose(obs, env, args, on_line, _retry=_retry - 1)  # o Docker acusa uma porta por vez
+    raise CliError("o docker compose falhou.", detail="\n".join(lines[-25:]),
+                   hint=f"Rode `{cmd('doctor')}` para diagnosticar (ele aponta a correção).")
 
 
 def kibana_step(env: dict[str, str]) -> None:
@@ -192,7 +265,7 @@ def kibana_step(env: dict[str, str]) -> None:
 def apply_dashboard(obs: Path, env: dict[str, str], quiet: bool = False) -> int:
     file = obs / "dashboard.ndjson"
     if not file.exists():
-        raise CliError(f"{file} não existe.", hint="Rode `obskitpy init --force` para recriar.")
+        raise CliError(f"{file} não existe.", hint=f"Rode `{cmd('init --force')}` para recriar.")
     with ui.Spinner("Aplicando o dashboard no Kibana") as sp:
         try:
             count = kibana.import_ndjson(kibana_url(env), file.read_text(encoding="utf-8"))
@@ -350,6 +423,14 @@ def cmd_init(args) -> None:
         checks = doctor_checks({k: ports[k] for k in ports_for(local)})
         problems = [c for c in checks if c[1] == "fail"]
         (sp.warn if problems else sp.ok)("Ambiente verificado" if not problems else "Ambiente com pendências")
+    if problems and interactive:  # em vez de desistir, tenta resolver (Compose, Colima...) com a sua confirmação
+        try:
+            docker.ensure_ready()
+            checks = doctor_checks({k: ports[k] for k in ports_for(local)})
+            problems = [c for c in checks if c[1] == "fail"]
+        except docker.DockerProblem as exc:
+            ui.warn(str(exc))
+            ui.hint(f"→ {exc.hint}")
     print_checks(checks, only_problems=True)
     for note in notes:
         ui.warn(note)
@@ -385,13 +466,13 @@ def cmd_init(args) -> None:
         if interactive and ui.confirm("Abrir o dashboard no navegador?", default=True):
             webbrowser.open(primary_url(env))
     elif not docker_ok:
-        ui.warn("Os arquivos foram criados, mas falta o Docker para subir a stack. Rode `obskitpy doctor` e depois `obskitpy up`.")
+        ui.warn(f"Os arquivos foram criados, mas o Docker ainda não está pronto. Rode `{cmd('doctor')}` e depois `{cmd('up')}`.")
 
     ui.out()
-    steps = [] if started else [f"{ui.paint('1.', 'teal', 'bold')} Suba a stack:  {ui.paint('obskitpy up' + ('' if str(obs) == DEFAULT_DIR else f' --dir {obs}'), 'bold')}"]
+    steps = [] if started else [f"{ui.paint('1.', 'teal', 'bold')} Suba a stack:  {ui.paint(cmd('up') + ('' if str(obs) == DEFAULT_DIR else f' --dir {obs}'), 'bold')}"]
     steps.append(f"{ui.paint(str(len(steps) + 1) + '.', 'teal', 'bold')} Instrumente o seu código:")
     ui.box("Próximos passos", steps + [""] + ["   " + l for l in code_snippet(service, env["OTLP_GRPC_PORT"])], accent="amber")
-    ui.out(f"\n  {ui.paint('Dúvidas?', 'gray')} {ui.link('https://pedrowill-dev.github.io/obskitpy/')}   {ui.paint('· diagnóstico:', 'gray')} obskitpy doctor\n")
+    ui.out(f"\n  {ui.paint('Dúvidas?', 'gray')} {ui.link('https://pedrowill-dev.github.io/obskitpy/')}   {ui.paint('· diagnóstico:', 'gray')} {cmd('doctor')}\n")
 
 
 def cmd_up(args) -> None:
@@ -401,7 +482,7 @@ def cmd_up(args) -> None:
     bring_up(obs, env)
     ui.out()
     summary_box(env)
-    ui.out(f"\n  {ui.paint('Abrir no navegador:', 'gray')} obskitpy open\n")
+    ui.out(f"\n  {ui.paint('Abrir no navegador:', 'gray')} {cmd('open')}   {ui.paint('· rodar seu código:', 'gray')} {cmd('run python app.py')}\n")
 
 
 def cmd_down(args) -> None:
@@ -428,7 +509,7 @@ def cmd_status(args) -> None:
         items = [json.loads(l) for l in raw.splitlines() if l.startswith("{")]
     ui.heading(f"Serviço {env['OBSKITPY_SERVICE']}")
     if not items:
-        ui.warn("Nenhum container rodando. Use `obskitpy up`.")
+        ui.warn(f"Nenhum container rodando. Use `{cmd('up')}`.")
     else:
         rows = []
         for it in items:
@@ -453,12 +534,53 @@ def cmd_open(args) -> None:
         url = dashboard_url(env)
     elif args.ui == "dash-obskitpy":
         if not uses_dash(env):
-            raise CliError("este projeto não usa o dash-obskitpy.", hint="Recrie com `obskitpy init --force --local ambos`.")
+            raise CliError("este projeto não usa o dash-obskitpy.", hint=f"Recrie com `{cmd('init --force --local ambos')}`.")
         url = dash_url(env)
     else:
         url = primary_url(env)
     ui.ok(f"Abrindo {ui.link(url)}")
     webbrowser.open(url)
+
+
+def stack_reachable(env: dict[str, str]) -> bool:
+    try:
+        urllib.request.urlopen(f"http://localhost:{env['ES_PORT']}", timeout=2).read()
+        return True
+    except OSError:
+        return False
+
+
+def cmd_run(args) -> None:
+    """Roda o seu programa já apontando para a stack (e sobe a stack se ela estiver parada)."""
+    obs = Path(args.dir)
+    env = read_env(obs / ".env")
+    command = list(args.cmd)
+    if command and command[0] == "--":
+        command = command[1:]
+    if not command:
+        if Path(DEMO_FILE).exists():
+            command = [sys.executable, DEMO_FILE]
+        else:
+            raise CliError("diga o que executar.", hint=f"Exemplo: {cmd('run python app.py')}")
+    if command[0] in ("python", "python3") and not shutil.which(command[0]):
+        command[0] = sys.executable
+    if not stack_reachable(env):
+        ui.warn("A stack não está no ar. Subindo agora…")
+        bring_up(obs, env)
+    endpoint = f"http://localhost:{env['OTLP_GRPC_PORT']}"
+    ui.out(f"{ui.paint('▶', 'teal', 'bold')} {ui.paint(' '.join(command), 'bold')}  {ui.paint('→ enviando para ' + endpoint, 'gray')}\n")
+    try:
+        code = subprocess.call(command, env={**os.environ, "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint})
+    except FileNotFoundError:
+        raise CliError(f"não encontrei o comando {command[0]!r}.", hint="Confira o nome do programa (ex.: python app.py).")
+    time.sleep(2)  # o Collector leva um instante para entregar o último lote
+    try:  # deixa os primeiros dados consultáveis na hora
+        urllib.request.urlopen(urllib.request.Request(f"http://localhost:{env['ES_PORT']}/_refresh", method="POST"), timeout=5).read()
+    except OSError:
+        pass
+    ui.out(f"\n{ui.paint('✔' if code == 0 else '!', 'green' if code == 0 else 'amber', 'bold')} Terminou (código {code}). "
+           f"Veja no dashboard: {ui.link(primary_url(env))}")
+    sys.exit(code)
 
 
 def cmd_doctor(args) -> None:
@@ -498,7 +620,7 @@ def cmd_dashboard_export(args) -> None:
             raise
         if not ndjson.strip():
             sp.fail("O Kibana não devolveu o dashboard")
-            raise CliError("o dashboard não existe no Kibana (foi apagado?).", hint="Rode `obskitpy dashboard apply` para recriá-lo.")
+            raise CliError("o dashboard não existe no Kibana (foi apagado?).", hint=f"Rode `{cmd('dashboard apply')}` para recriá-lo.")
         (obs / "dashboard.ndjson").write_text(ndjson, encoding="utf-8")
         sp.ok(f"{obs}/dashboard.ndjson atualizado {ui.paint(f'({len(ndjson.splitlines())} objetos)', 'gray')}")
     ui.hint("Versione o arquivo no git.")
@@ -506,8 +628,48 @@ def cmd_dashboard_export(args) -> None:
 
 # --- parser --------------------------------------------------------------------------------
 
+ALIASES = {"start": "up", "stop": "down", "ps": "status", "ls": "status", "check": "doctor", "new": "init", "exec": "run"}
+SAFE_AUTOFIX = {"up", "status", "open", "doctor", "run"}
+
+
+class FriendlyParser(argparse.ArgumentParser):
+    """Em vez de despejar um erro de uso, sugere o comando certo."""
+
+    def error(self, message):
+        m = re.search(r"invalid choice: '([^']*)'", message)
+        if m and self.prog == "obskitpy":
+            ui.out()
+            ui.fail(f"Não conheço o comando {ui.paint(repr(m.group(1)), 'bold')}.")
+            near = difflib.get_close_matches(m.group(1), COMMANDS, n=2, cutoff=0.5)
+            if near:
+                ui.hint("→ Você quis dizer: " + " ou ".join(f"{prog()} {n}" for n in near) + "?")
+            ui.hint("Comandos: " + ", ".join(COMMANDS) + f"   ({prog()} --help para detalhes)")
+            sys.exit(2)
+        super().error(message)
+
+
+COMMANDS = ["init", "up", "down", "status", "open", "run", "doctor", "dashboard"]
+
+
+def normalize_argv(argv: list[str]) -> list[str]:
+    """Aceita atalhos (start→up) e corrige erros de digitação seguros (upp→up)."""
+    if not argv or argv[0].startswith("-"):
+        return argv
+    word = argv[0]
+    if word in COMMANDS:
+        return argv
+    target = ALIASES.get(word)
+    if not target and len(word) >= 3:
+        near = difflib.get_close_matches(word, sorted(SAFE_AUTOFIX), n=2, cutoff=0.75)
+        target = near[0] if len(near) == 1 else None
+    if target:
+        ui.hint(f"Entendi {word!r} como {target!r}.")
+        return [target, *argv[1:]]
+    return argv
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="obskitpy", description=__doc__)
+    parser = FriendlyParser(prog="obskitpy", description=__doc__)
     parser.add_argument("--version", action="version", version=f"obskitpy {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -535,6 +697,8 @@ def build_parser() -> argparse.ArgumentParser:
     opn = command("open", cmd_open, "abre o dashboard no navegador")
     opn.add_argument("--ui", choices=("kibana", "dash-obskitpy"), help="qual abrir (padrão: dash-obskitpy se existir, senão Kibana)")
     command("doctor", cmd_doctor, "diagnostica Docker, Compose, memória e portas")
+    run = command("run", cmd_run, "roda o seu programa enviando os dados para a stack (sobe a stack se preciso)")
+    run.add_argument("cmd", nargs=argparse.REMAINDER, help="o comando, ex.: python app.py")
 
     dash = sub.add_parser("dashboard", help="sincroniza o dashboard com o Kibana")
     dsub = dash.add_subparsers(dest="action", required=True)
@@ -547,9 +711,24 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
+    argv = normalize_argv(list(sys.argv[1:] if argv is None else argv))
     args = build_parser().parse_args(argv)
     try:
         args.fn(args)
+    except NotInitialized as exc:
+        ui.out()
+        ui.warn(f"{str(exc).capitalize()}")
+        if ui.interactive() and ui.confirm("Rodar o assistente (init) agora?", default=True):
+            init_args = build_parser().parse_args(["init", "--dir", args.dir])
+            init_args.fn(init_args)
+            return
+        ui.hint(f"→ {exc.hint}")
+        sys.exit(1)
+    except docker.DockerProblem as exc:
+        ui.out()
+        ui.fail(ui.paint(str(exc), "bold"))
+        ui.hint(f"→ {exc.hint}")
+        sys.exit(1)
     except CliError as exc:
         ui.out()
         ui.fail(ui.paint(str(exc), "bold"))
