@@ -14,6 +14,8 @@ class Settings:
     admin_password: str
     public_origin: str = ""        # se o portal tem endereço HTTPS público, o OAuth volta direto para ele
     oauth_relay_url: str = "https://pedrowill-dev.github.io/obskitpy/oauth/slack-callback.html"
+    es_url: str = ""               # Elasticsearch para avaliar os alertas (vazio = avaliador desligado)
+    eval_interval: int = 30
 
 
 def load() -> Settings:
@@ -30,4 +32,6 @@ def load() -> Settings:
         admin_password=os.environ.get("OBSKITPY_ADMIN_PASSWORD", ""),
         public_origin=os.environ.get("OBSKITPY_PUBLIC_ORIGIN", "").rstrip("/"),
         oauth_relay_url=os.environ.get("OBSKITPY_OAUTH_RELAY", "https://pedrowill-dev.github.io/obskitpy/oauth/slack-callback.html"),
+        es_url=os.environ.get("OBSKITPY_ES_URL", "").rstrip("/"),
+        eval_interval=int(os.environ.get("OBSKITPY_EVAL_INTERVAL", "30")),
     )

@@ -1,10 +1,9 @@
 # Portal de alertas e integrações
 
-!!! note "Fase 1 de um roadmap maior"
-    Esta é a **base** do portal de alertas: PostgreSQL, API com autenticação e a tela de **Integrações** no dash.
-    Você já cadastra e **testa** as conexões com Telegram, Microsoft Teams, Slack e e-mail. O motor de regras, os
-    incidentes e o editor de fluxos vêm nas próximas fases (veja o [roadmap](#roadmap)). Nada aqui envia alertas
-    automáticos ainda: o envio acontece quando você clica em **Testar**.
+!!! note "Fases 1 e 3 (parcial) de um roadmap maior"
+    O portal já guarda as **integrações** (Telegram, Teams, Slack, e-mail), cadastra **destinos** e cria **alertas**
+    que avisam esses destinos sozinhos. Reconhecimento, escalonamento e o editor visual de fluxos vêm nas próximas
+    fases (veja o [roadmap](#roadmap)).
 
 ![Tela de Integrações no dash-obskitpy](images/dash-integracoes.png)
 
@@ -86,6 +85,29 @@ envia uma mensagem de teste. O resultado (OK ou o motivo da falha) fica registra
 
 Essa separação permite que uma regra continue valendo quando o canal ou o responsável mudar.
 
+## Alertas
+
+Na aba **Alertas** do dash você cria regras que avisam o canal escolhido quando a automação der problema. Depois de
+conectar um destino (por exemplo, um canal do Slack), clique em **+ Novo alerta**:
+
+| Quando avisar | O que mede na janela |
+|---|---|
+| **Logs de erro** | Quantidade de logs `ERROR`/`CRITICAL` do serviço |
+| **Etapas com falha** | Quantidade de spans (traces) com status de erro |
+| **Automação parada** | Nenhum log nem trace recebido (a automação não rodou ou travou) |
+
+Você escolhe o **serviço** (ou todos), o **limite**, a **janela** em minutos, a **gravidade**, os **destinos** e de
+quanto em quanto tempo **relembrar** enquanto o problema continuar.
+
+O portal avalia as regras a cada 30 s consultando o Elasticsearch. O ciclo de cada alerta é:
+
+1. a condição estoura → abre um **incidente** e envia o aviso (uma vez);
+2. continua estourada → relembra só depois do tempo de "relembrar" (0 = nunca);
+3. volta ao normal → fecha o incidente e envia "✅ Resolvido".
+
+**Testar agora** mede a condição na hora e manda uma mensagem de teste aos destinos, sem abrir incidente. Se o
+Elasticsearch ou um destino falhar, o alerta guarda o motivo e os outros destinos continuam sendo avisados.
+
 ## Segurança
 
 | Proteção | Como |
@@ -104,7 +126,7 @@ Essa separação permite que uma regra continue valendo quando o canal ou o resp
 
 ## API
 
-Documentação interativa em `/api/docs`. Rotas da Fase 1:
+Documentação interativa em `/api/docs`. Rotas principais:
 
 | Rota | Perfil | O que faz |
 |---|---|---|
@@ -115,22 +137,26 @@ Documentação interativa em `/api/docs`. Rotas da Fase 1:
 | `POST /api/v1/integrations/{id}/test` | operator | Valida e, com `destination_id`, envia uma mensagem de teste |
 | `GET/POST/DELETE /api/v1/destinations` | viewer / admin | Destinos |
 | `GET/POST/DELETE /api/v1/contacts` · `/contact-groups` | viewer / admin | Contatos e grupos |
+| `GET/POST/PUT/DELETE /api/v1/alerts` | viewer / admin | Regras de alerta |
+| `POST /api/v1/alerts/{id}/test` | operator | Mede e envia uma mensagem de teste |
+| `GET /api/v1/incidents` | logado | Incidentes abertos e resolvidos |
 | `GET/POST/DELETE /api/v1/users` | admin | Usuários |
 | `GET /api/v1/audit` | admin | Auditoria |
 
 ## Modelo de dados
 
 `users`, `provider_connections`, `notification_destinations`, `contacts`, `contact_groups` (com as tabelas de ligação) e
+`oauth_apps`, `alert_rules`, `incidents` e
 `audit_events`, em PostgreSQL via SQLAlchemy.
 
 ## Roadmap
 
-Planejado, **ainda não implementado**:
+Planejado, **ainda não implementado** (o essencial da fase 3 — regras, janelas, limiares e incidentes — já existe):
 
 | Fase | Entrega |
 |---|---|
 | 2. Envio | Templates de mensagem, workers com retentativa e deduplicação, histórico de entregas |
-| 3. Alertas | Avaliador de regras sobre o Elasticsearch (limiares, janelas, agrupamento por assinatura) e incidentes |
+| 3. Alertas (resto) | Agrupamento por assinatura de erro, mais tipos de condição e métricas (limiares e janelas já existem) |
 | 4. Operação | Reconhecimento, escalonamento, silêncio e recuperação |
 | 5. Multicanal | Conexão por OAuth do Gmail e Teams via Graph (o Slack por OAuth já está disponível) |
 | 6. Editor visual | Construtor de fluxos de alerta |

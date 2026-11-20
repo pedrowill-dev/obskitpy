@@ -482,3 +482,100 @@ def test_kinds_catalog_marks_slack_app_as_oauth_and_hides_internal_fields(sclien
     kinds = {k["kind"]: k for k in sclient.get("/api/v1/integrations/kinds").json()}
     assert kinds["slack_app"]["oauth"] == "slack" and kinds["telegram"]["oauth"] is None
     assert [f["name"] for f in kinds["slack_app"]["config_fields"]] == ["bot_name", "icon_emoji"]
+
+
+# ---------- alertas ----------
+
+from obskitpy.portal import alerts  # noqa: E402
+from obskitpy.portal.models import AlertRule, Incident  # noqa: E402
+
+
+def make_rule_world(client):
+    """Telegram + destino + regra de erros; devolve o id da regra."""
+    login(client)
+    integ = client.post("/api/v1/integrations", json={"kind": "telegram", "name": "bot", "secrets": {"bot_token": TOKEN}}, headers=CSRF).json()
+    dest = client.post("/api/v1/destinations", json={"connection_id": integ["id"], "name": "ops", "target": "42"}, headers=CSRF).json()
+    r = client.post("/api/v1/alerts", json={"name": "Erros do robô", "service": "meu-robo", "condition": "error_logs", "threshold": 3,
+                                             "window_minutes": 5, "severity": "critical", "destination_ids": [dest["id"]], "cooldown_minutes": 10}, headers=CSRF)
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def run_eval(client, rule_id, value, sent):
+    import asyncio
+
+    async def fake_measure(es_url, rule):
+        return value
+
+    async def fake_deliver(db, key, rule, message):
+        sent.append(message)
+        return "1 de 1 destinos"
+
+    sessions = client.app_state.sessions
+    with sessions() as db:
+        rule = db.get(AlertRule, rule_id)
+        return asyncio.run(alerts.evaluate(db, SECRET, "http://es", rule, fake_measure, fake_deliver))
+
+
+def test_alert_opens_reminds_and_resolves(client):
+    rid, sent = make_rule_world(client), []
+    assert run_eval(client, rid, 1, sent) == "ok" and not sent                      # abaixo do limite
+    assert run_eval(client, rid, 5, sent) == "alert" and sent[-1].severity == "critical"   # estourou: avisa
+    assert run_eval(client, rid, 6, sent) == "ok" and len(sent) == 1                  # continua: não repete antes do cooldown
+    with client.app_state.sessions() as db:
+        rule = db.get(AlertRule, rid)
+        from datetime import timedelta
+        rule.last_notified_at = rule.last_notified_at - timedelta(minutes=11)
+        db.commit()
+    assert run_eval(client, rid, 6, sent) == "reminder" and sent[-1].title.startswith("Lembrete")
+    assert run_eval(client, rid, 0, sent) == "resolved" and sent[-1].title.startswith("✅")
+    incidents = client.get("/api/v1/incidents").json()
+    assert len(incidents) == 1 and incidents[0]["resolved_at"] and incidents[0]["value"] == 6
+    assert client.get("/api/v1/alerts").json()[0]["state"] == "ok"
+
+
+def test_alert_no_data_fires_on_silence(client):
+    login(client)
+    integ = client.post("/api/v1/integrations", json={"kind": "telegram", "name": "bot", "secrets": {"bot_token": TOKEN}}, headers=CSRF).json()
+    dest = client.post("/api/v1/destinations", json={"connection_id": integ["id"], "name": "ops", "target": "42"}, headers=CSRF).json()
+    rid = client.post("/api/v1/alerts", json={"name": "Parou", "service": "x", "condition": "no_data", "destination_ids": [dest["id"]]}, headers=CSRF).json()["id"]
+    sent = []
+    assert run_eval(client, rid, 0, sent) == "alert" and "não enviou" in sent[-1].text
+    assert run_eval(client, rid, 9, sent) == "resolved"
+
+
+def test_alert_query_failure_is_recorded_without_changing_state(client):
+    import asyncio
+    rid = make_rule_world(client)
+
+    async def boom(es_url, rule):
+        raise httpx.ConnectError("x")
+
+    with client.app_state.sessions() as db:
+        rule = db.get(AlertRule, rid)
+        assert asyncio.run(alerts.evaluate(db, SECRET, "http://es", rule, boom)) == "erro"
+    r = client.get("/api/v1/alerts").json()[0]
+    assert r["state"] == "ok" and "Elasticsearch" in r["last_error"]
+
+
+def test_alert_rule_validation_and_permissions(client):
+    rid = make_rule_world(client)
+    base = {"name": "x", "condition": "error_logs", "destination_ids": [999]}
+    assert client.post("/api/v1/alerts", json=base, headers=CSRF).status_code == 422                           # destino inexistente
+    assert client.post("/api/v1/alerts", json={**base, "destination_ids": [1], "condition": "foo"}, headers=CSRF).status_code == 422
+    assert client.post("/api/v1/alerts", json={**base, "destination_ids": []}, headers=CSRF).status_code == 422  # sem destino
+    assert client.post("/api/v1/alerts", json={"name": "Erros do robô", "condition": "error_logs", "destination_ids": [1]}, headers=CSRF).status_code == 409
+    client.post("/api/v1/auth/logout", headers=CSRF)
+    client.cookies.clear()
+    make_user(client, "v@empresa.com", "viewer")
+    login(client, "v@empresa.com", "outra-senha-123")
+    assert client.get("/api/v1/alerts").status_code == 200
+    assert client.delete(f"/api/v1/alerts/{rid}", headers=CSRF).status_code == 403
+
+
+def test_alert_test_endpoint_sends_to_destinations_without_incident(client, requests_log):
+    rid = make_rule_world(client)
+    r = client.post(f"/api/v1/alerts/{rid}/test", headers=CSRF)
+    assert r.status_code == 200 and r.json()["sent"].startswith("1 de 1") and r.json()["value"] is None
+    assert any("sendMessage" in q.url.path for q in requests_log)
+    assert client.get("/api/v1/incidents").json() == []

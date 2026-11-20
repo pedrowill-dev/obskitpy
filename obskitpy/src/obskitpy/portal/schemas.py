@@ -99,6 +99,37 @@ class GroupOut(BaseModel):
     member_ids: list[int]
 
 
+class RuleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    service: str = Field(default="", max_length=120)
+    condition: str
+    threshold: int = Field(default=1, ge=1, le=1_000_000)
+    window_minutes: int = Field(default=5, ge=1, le=10_080)
+    severity: str = "warning"
+    destination_ids: list[int] = Field(min_length=1)
+    cooldown_minutes: int = Field(default=30, ge=0, le=10_080)
+    enabled: bool = True
+
+
+class RuleOut(RuleIn):
+    id: int
+    state: str
+    last_value: int | None
+    last_eval_at: datetime | None
+    last_error: str
+
+
+class IncidentOut(BaseModel):
+    id: int
+    rule_name: str
+    service: str
+    severity: str
+    value: int
+    opened_at: datetime
+    resolved_at: datetime | None
+    notified: str
+
+
 class SlackAppIn(BaseModel):
     client_id: str = Field(min_length=3, max_length=60)
     client_secret: str = Field(min_length=10, max_length=120)

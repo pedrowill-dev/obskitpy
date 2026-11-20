@@ -2,6 +2,7 @@
 
 Executar:  uvicorn obskitpy.portal.app:create_app --factory --host 0.0.0.0 --port 8000
 """
+import asyncio
 import json
 import re
 import secrets as pysecrets
@@ -15,9 +16,9 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import providers, schemas
+from . import alerts, providers, schemas
 from .db import Base, make_engine, make_session_factory
-from .models import AuditEvent, Contact, ContactGroup, Destination, OAuthApp, ProviderConnection, User, now
+from .models import AlertRule, AuditEvent, Contact, ContactGroup, Destination, OAuthApp, Incident, ProviderConnection, User, now
 from .security import (LoginLimiter, decrypt_secrets, encrypt_secrets, hash_password, make_state, make_token, read_state,
                        read_token, verify_password)
 from .settings import Settings, load
@@ -48,7 +49,10 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
                 db.add(User(email=settings.admin_email.lower(), name="Administrador", role="admin",
                             password_hash=hash_password(settings.admin_password)))
                 db.commit()
+        worker = asyncio.create_task(alerts.run_forever(sessions, settings.secret_key, settings.es_url, settings.eval_interval)) if settings.es_url else None
         yield
+        if worker:
+            worker.cancel()
 
     app = FastAPI(title="obskitpy portal", version=_version(), lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.state.settings, app.state.sessions = settings, sessions
@@ -378,6 +382,90 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
         db.delete(dest)
         db.commit()
         audit(db, actor.email, "destination.delete", "destination", dest_id)
+
+    # ---------- alertas ----------
+    def out_rule(r: AlertRule) -> schemas.RuleOut:
+        return schemas.RuleOut(id=r.id, name=r.name, service=r.service, condition=r.condition, threshold=r.threshold,
+                               window_minutes=r.window_minutes, severity=r.severity, destination_ids=r.destination_ids,
+                               cooldown_minutes=r.cooldown_minutes, enabled=r.enabled, state=r.state, last_value=r.last_value,
+                               last_eval_at=r.last_eval_at, last_error=r.last_error)
+
+    def check_rule(db: Session, body: schemas.RuleIn) -> None:
+        if body.condition not in alerts.CONDITIONS:
+            raise HTTPException(422, f"condição desconhecida (use: {', '.join(alerts.CONDITIONS)})")
+        if body.severity not in alerts.SEVERITIES:
+            raise HTTPException(422, f"severidade desconhecida (use: {', '.join(alerts.SEVERITIES)})")
+        if any(not db.get(Destination, i) for i in body.destination_ids):
+            raise HTTPException(422, "destino não encontrado: cadastre o destino (canal, chat ou e-mail) antes de criar o alerta")
+
+    @app.get("/api/v1/alerts/conditions")
+    def alert_conditions(_: User = Depends(current_user)):
+        return {"evaluator": bool(settings.es_url),
+                "conditions": [{"condition": k, "label": v[0], "help": v[1]} for k, v in alerts.CONDITIONS.items()]}
+
+    @app.get("/api/v1/alerts", response_model=list[schemas.RuleOut])
+    def list_rules(db: Session = Depends(get_db), _: User = Depends(current_user)):
+        return [out_rule(r) for r in db.scalars(select(AlertRule).order_by(AlertRule.name))]
+
+    @app.post("/api/v1/alerts", response_model=schemas.RuleOut, status_code=201)
+    def create_rule(body: schemas.RuleIn, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
+        check_rule(db, body)
+        rule = AlertRule(**{**body.model_dump(), "name": body.name.strip()})
+        db.add(rule)
+        try:
+            db.commit()
+        except IntegrityError:
+            conflict(db, "um alerta")
+        audit(db, actor.email, "alert.create", "alert", rule.id, condition=rule.condition)
+        return out_rule(rule)
+
+    @app.put("/api/v1/alerts/{rule_id}", response_model=schemas.RuleOut)
+    def update_rule(rule_id: int, body: schemas.RuleIn, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
+        rule = db.get(AlertRule, rule_id)
+        if not rule:
+            raise HTTPException(404, "alerta não encontrado")
+        check_rule(db, body)
+        for key, val in {**body.model_dump(), "name": body.name.strip()}.items():
+            setattr(rule, key, val)
+        if not rule.enabled:
+            rule.state = "ok"
+        try:
+            db.commit()
+        except IntegrityError:
+            conflict(db, "um alerta")
+        audit(db, actor.email, "alert.update", "alert", rule.id)
+        return out_rule(rule)
+
+    @app.delete("/api/v1/alerts/{rule_id}", status_code=204)
+    def delete_rule(rule_id: int, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
+        rule = db.get(AlertRule, rule_id)
+        if rule:
+            db.delete(rule)
+            db.commit()
+            audit(db, actor.email, "alert.delete", "alert", rule_id)
+
+    @app.post("/api/v1/alerts/{rule_id}/test")
+    async def test_rule(rule_id: int, db: Session = Depends(get_db), actor: User = Depends(need("operator"))):
+        """Mede a condição agora e manda uma mensagem de teste aos destinos (não abre incidente)."""
+        rule = db.get(AlertRule, rule_id)
+        if not rule:
+            raise HTTPException(404, "alerta não encontrado")
+        value = None
+        if settings.es_url:
+            try:
+                value = await alerts.measure(settings.es_url, rule)
+            except Exception as exc:
+                raise HTTPException(502, f"não consegui consultar o Elasticsearch ({type(exc).__name__})")
+        now_says = alerts.describe(rule, value) if value is not None else ""
+        msg = providers.Message(f"Teste do alerta: {rule.name}", f"Mensagem de teste: nenhum incidente foi aberto. {now_says}".strip(), rule.severity,
+                                [("Regra", rule.name), ("Serviço", rule.service or "todos")])
+        summary = await alerts.deliver(db, settings.secret_key, rule, msg)
+        audit(db, actor.email, "alert.test", "alert", rule.id)
+        return {"value": value, "would_fire": None if value is None else alerts.breached(rule, value), "sent": summary}
+
+    @app.get("/api/v1/incidents", response_model=list[schemas.IncidentOut])
+    def list_incidents(limit: int = 50, db: Session = Depends(get_db), _: User = Depends(current_user)):
+        return db.scalars(select(Incident).order_by(Incident.opened_at.desc()).limit(min(max(limit, 1), 200))).all()
 
     # ---------- contatos e grupos ----------
     def out_contact(c: Contact) -> schemas.ContactOut:
