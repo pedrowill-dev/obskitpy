@@ -772,6 +772,34 @@ def stack_reachable(env: dict[str, str]) -> bool:
         return False
 
 
+def recent_services(env: dict[str, str], seconds: int = 180) -> list[str]:
+    """Serviços que mandaram logs nos últimos segundos (para detectar nome diferente do configurado)."""
+    body = json.dumps({"size": 0, "query": {"range": {"@timestamp": {"gte": f"now-{seconds}s"}}},
+                       "aggs": {"s": {"terms": {"field": "resource.attributes.service.name", "size": 20}}}}).encode()
+    req = urllib.request.Request(f"http://localhost:{env['ES_PORT']}/logs-generic.otel-*/_search", data=body,
+                                 headers={"content-type": "application/json"}, method="POST")
+    try:
+        urllib.request.urlopen(urllib.request.Request(f"http://localhost:{env['ES_PORT']}/_refresh", method="POST"), timeout=5).read()
+        data = json.loads(urllib.request.urlopen(req, timeout=5).read())
+        return [b["key"] for b in data["aggregations"]["s"]["buckets"]]
+    except (OSError, ValueError, KeyError):
+        return []
+
+
+def wait_recent(env: dict[str, str], since: float, timeout: int = 20) -> list[str]:
+    """Espera chegarem dados enviados depois de `since` (de qualquer serviço) e devolve quem os enviou."""
+    deadline = time.time() + timeout
+    while True:
+        found = recent_services(env, int(time.time() - since) + 2)
+        if found or time.time() > deadline:
+            return found
+        time.sleep(1.5)
+
+
+def service_url(env: dict[str, str], service: str) -> str:
+    return primary_url({**env, "OBSKITPY_SERVICE": service})
+
+
 def cmd_run(args) -> None:
     """Roda o seu programa já apontando para a stack (e sobe a stack se ela estiver parada)."""
     obs = Path(args.dir)
@@ -791,12 +819,21 @@ def cmd_run(args) -> None:
         bring_up(obs, env)
     wait_collector(env)
     endpoint = f"http://localhost:{env['OTLP_GRPC_PORT']}"
+    started = time.time()
     ui.out(f"{ui.paint('▶', 'teal', 'bold')} {ui.paint(' '.join(command), 'bold')}  {ui.paint('→ enviando para ' + endpoint, 'gray')}\n")
     try:
         code = subprocess.call(command, env={**os.environ, "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint})
     except FileNotFoundError:
         raise CliError(f"não encontrei o comando {command[0]!r}.", hint="Confira o nome do programa (ex.: python app.py).")
-    wait_data(env, timeout=20)  # o Collector e o Elasticsearch levam um instante para entregar o último lote
+    sent_by = wait_recent(env, started)  # o Collector e o Elasticsearch levam um instante
+    others = [x for x in sent_by if x != env["OBSKITPY_SERVICE"]]
+    if sent_by and env["OBSKITPY_SERVICE"] not in sent_by and others:
+        # o código mandou dados, mas com outro nome de serviço: o dash deste projeto ficaria vazio
+        ui.out()
+        ui.warn(f"Seu código enviou os dados como {ui.paint(repr(others[0]), 'bold')}, mas este projeto é {ui.paint(repr(env['OBSKITPY_SERVICE']), 'bold')}; por isso o dash dele aparece vazio.")
+        ui.hint(f"→ Para ver agora: {ui.link(service_url(env, others[0]))}")
+        ui.hint(f"→ Para corrigir: troque para obskitpy.setup(\"{env['OBSKITPY_SERVICE']}\") no seu código (ou escolha o projeto {others[0]!r} no seletor do dash).")
+        sys.exit(code)
     ui.out(f"\n{ui.paint('✔' if code == 0 else '!', 'green' if code == 0 else 'amber', 'bold')} Terminou (código {code}). "
            f"Veja no dashboard: {ui.link(primary_url(env))}")
     sys.exit(code)

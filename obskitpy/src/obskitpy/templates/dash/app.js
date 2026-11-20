@@ -76,7 +76,14 @@
   const bucketsFrom = (agg, keyOf) => agg.buckets.map((b) => ({ t: b.key_as_string || b.key, v: Object.fromEntries(b.k.buckets.map((x) => [x.key, x.doc_count])) }));
 
   /* ---------- telas ---------- */
-  const emptyState = () => `<div class="empty"><h3>Ainda sem dados para <code>${esc(state.service)}</code></h3><p>Rode a sua aplicação (com <code>obskitpy.setup("${esc(state.service)}")</code>) ou gere um exemplo com <code>python obskitpy_demo.py</code>.<br>Os dados aparecem aqui em segundos.</p></div>`;
+  const emptyState = () => {
+    state.emptyShown = true;
+    const others = state.services.filter((s) => s !== state.service);
+    const hint = others.length
+      ? `<p class="other">Mas há dados de outros projetos: ${others.map((s) => `<a href="#overview?service=${encodeURIComponent(s)}" data-svc="${esc(s)}">${esc(s)}</a>`).join(" · ")}.<br>Se o seu código envia como um deles, ajuste o nome em <code>obskitpy.setup("${esc(state.service)}")</code> ou escolha o projeto no seletor do topo.</p>`
+      : "";
+    return `<div class="empty"><h3>Ainda sem dados para <code>${esc(state.service)}</code></h3><p>Rode a sua aplicação (com <code>obskitpy.setup("${esc(state.service)}")</code>) ou gere um exemplo com <code>python obskitpy_demo.py</code>.<br>Os dados aparecem aqui em segundos.</p>${hint}</div>`;
+  };
 
   async function overview() {
     const [logs, traces] = await Promise.all([
@@ -182,7 +189,7 @@
   const TABS = { overview, logs: logsTab, traces: tracesTab, metrics: metricsTab };
   let busy = false;
   async function render(showSpin = true) {
-    if (busy) return; busy = true;
+    if (busy) return; busy = true; state.emptyShown = false;
     const btn = $("#refresh"); if (showSpin) { btn.classList.remove("spin"); void btn.offsetWidth; btn.classList.add("spin"); }
     $$("#tabs a").forEach((a) => a.classList.toggle("on", a.dataset.tab === state.tab));
     try {
@@ -198,6 +205,7 @@
   function wire() {
     const app = $("#app");
     wireTips(app);
+    $$("[data-svc]", app).forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); selectService(a.dataset.svc); }));
     $$("[data-err]", app).forEach((tr) => tr.addEventListener("click", () => { state.errType = tr.dataset.err; state.seen = null; go("logs"); }));
     $$("[data-sev]", app).forEach((b) => b.addEventListener("click", () => { state.sev = b.dataset.sev; state.seen = null; render(false); }));
     $$("[data-clear]", app).forEach((b) => b.addEventListener("click", () => { state.errType = ""; state.seen = null; render(false); }));
@@ -301,8 +309,10 @@
         (r?.aggregations.s.buckets || []).forEach((b) => found.add(b.key));
       } catch { /* a stack pode ainda não ter dados */ }
     }
+    const before = state.services.join("|");
     state.services = [...found].sort();
     paintServices();
+    if (state.emptyShown && before !== state.services.join("|")) render(false); // o estado vazio passa a sugerir os outros projetos
   }
   $("#svc").addEventListener("change", (e) => selectService(e.target.value));
   $("#svc").addEventListener("mousedown", loadServices); // atualiza a lista ao abrir

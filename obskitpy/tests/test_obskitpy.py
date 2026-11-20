@@ -235,7 +235,7 @@ def test_run_points_program_at_the_stack(tmp_path, monkeypatch):
     main(["init", "--dir", str(obs), "--service", "app", "--yes"])
     monkeypatch.setattr(cli, "stack_reachable", lambda env: True)
     monkeypatch.setattr(cli, "collector_ready", lambda env: True)
-    monkeypatch.setattr(cli, "wait_data", lambda env, timeout=0: True)
+    monkeypatch.setattr(cli, "wait_recent", lambda env, since, timeout=0: ["app"])
     seen = {}
 
     def fake_call(command, env):
@@ -502,3 +502,23 @@ def test_dash_has_project_selector():
     js = t.joinpath("dash/app.js").read_text()
     for needle in ("state.service", "loadServices", "dash.service", "service="):
         assert needle in js
+
+
+def test_run_warns_when_code_sends_a_different_service_name(tmp_path, monkeypatch, capsys):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "meu-projeto", "--local", "dash-obskitpy", "--yes"])
+    monkeypatch.setattr(cli, "stack_reachable", lambda env: True)
+    monkeypatch.setattr(cli, "collector_ready", lambda env: True)
+    monkeypatch.setattr(cli, "wait_recent", lambda env, since, timeout=0: ["news-gov"])  # chegou, mas como outro nome
+    monkeypatch.setattr(cli.subprocess, "call", lambda command, env: 0)
+    with pytest.raises(SystemExit) as exc:
+        main(["run", "--dir", str(obs), "--", "python", "app.py"])
+    out = capsys.readouterr().out
+    assert exc.value.code == 0 and "'news-gov'" in out and "'meu-projeto'" in out
+    assert "service=news-gov" in out and 'obskitpy.setup("meu-projeto")' in out
+
+
+def test_dash_empty_state_suggests_other_projects():
+    from importlib import resources
+    js = resources.files("obskitpy.templates").joinpath("dash/app.js").read_text()
+    assert "data-svc" in js and "Mas há dados de outros projetos" in js and "emptyShown" in js

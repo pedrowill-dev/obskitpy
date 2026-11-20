@@ -49,6 +49,12 @@ se faltar o Docker, cria os arquivos mesmo assim para você subir depois com `ob
 
 ## O dash-obskitpy abre mas não mostra dados
 
+- **Rodei o código e o dash está vazio, mas os logs saem no terminal:** quase sempre o nome do projeto é diferente.
+  O dash mostra o projeto escolhido no seletor do topo, e o seu código envia com o nome de `obskitpy.setup("nome")`.
+  Se os dois não forem iguais, os dados ficam num projeto e o dash olha para outro. O `obskitpy run` avisa
+  ("Seu código enviou os dados como 'x', mas este projeto é 'y'") e o dash vazio lista os outros projetos que têm dados.
+  Corrija usando o mesmo nome do `OBSKITPY_SERVICE` em `observability/.env`, ou escolha o outro projeto no seletor.
+
 - A mensagem **"Não consegui falar com o Elasticsearch"** indica a stack parada: `obskitpy status` e `obskitpy up`.
 - **"Ainda sem dados para <serviço>"**: o nome em `obskitpy.setup("...")` precisa ser o `OBSKITPY_SERVICE` do
   `observability/.env`. Rode `python obskitpy_demo.py` (gerado pelo `init --demo`) para ver dados na hora.
