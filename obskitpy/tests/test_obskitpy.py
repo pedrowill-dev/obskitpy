@@ -233,6 +233,8 @@ def test_run_points_program_at_the_stack(tmp_path, monkeypatch):
     obs = tmp_path / "observability"
     main(["init", "--dir", str(obs), "--service", "app", "--yes"])
     monkeypatch.setattr(cli, "stack_reachable", lambda env: True)
+    monkeypatch.setattr(cli, "collector_ready", lambda env: True)
+    monkeypatch.setattr(cli, "wait_data", lambda env, timeout=0: True)
     seen = {}
 
     def fake_call(command, env):
@@ -257,8 +259,66 @@ def test_prog_picks_a_usable_invocation(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.shutil, "which", lambda n: "/x/obskitpy" if n == "obskitpy" else None)
     assert cli.prog() == "obskitpy"
+    # dentro de um projeto uv, o executável do .venv não está no PATH do usuário: sugere `uv run`
+    monkeypatch.setattr(cli.shutil, "which", lambda n: {"obskitpy": "/p/.venv/bin/obskitpy", "uv": "/x/uv"}.get(n))
+    (tmp_path / "pyproject.toml").write_text("")
+    assert cli.prog() == "uv run obskitpy"
+    (tmp_path / "pyproject.toml").unlink()
     monkeypatch.setattr(cli.shutil, "which", lambda n: "/x/uv" if n == "uv" else None)
     (tmp_path / "pyproject.toml").write_text("")
     assert cli.prog() == "uv run obskitpy"
     monkeypatch.setattr(cli.shutil, "which", lambda n: None)
     assert cli.prog() == "python -m obskitpy"
+
+
+def test_init_on_existing_folder_offers_choices(tmp_path, monkeypatch, capsys):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--yes"])
+    monkeypatch.setattr(ui, "interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *_: "3")  # Cancelar
+    main(["init", "--dir", str(obs)])
+    out = capsys.readouterr().out
+    assert "já tem o obskitpy" in out and "Cancelar" in out
+    assert not (tmp_path / "observability.bak").exists()
+
+
+def test_init_force_keeps_a_backup(tmp_path):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--yes"])
+    (obs / "dashboard.ndjson").write_text("meu dashboard editado\n")
+    main(["init", "--dir", str(obs), "--service", "app", "--yes", "--force"])
+    assert (tmp_path / "observability.bak" / "dashboard.ndjson").read_text() == "meu dashboard editado\n"
+
+
+def test_wait_collector_retries_until_ready(monkeypatch):
+    answers = iter([False, False, True])
+    monkeypatch.setattr(cli, "collector_ready", lambda env: next(answers))
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    cli.wait_collector({"OTLP_HTTP_PORT": "1", "OBSKITPY_SERVICE": "a"})  # não levanta
+
+
+def test_wait_collector_gives_actionable_error(monkeypatch):
+    monkeypatch.setattr(cli, "collector_ready", lambda env: False)
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    clock = iter(range(0, 1000, 50))
+    monkeypatch.setattr(cli.time, "time", lambda: next(clock))
+    with pytest.raises(cli.CliError) as exc:
+        cli.wait_collector({"OTLP_HTTP_PORT": "1", "OBSKITPY_SERVICE": "a"}, timeout=60)
+    assert "logs otel-collector" in exc.value.hint
+
+
+def test_wait_data_polls_until_service_has_data(monkeypatch):
+    calls = {"n": 0}
+
+    class Resp:
+        def __init__(self, count): self.count = count
+        def read(self): return json.dumps({"count": self.count}).encode()
+
+    def fake_urlopen(req, timeout=0):
+        if req.full_url.endswith("_refresh"):
+            return Resp(0)
+        calls["n"] += 1
+        return Resp(0 if calls["n"] < 3 else 5)
+    monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    assert cli.wait_data({"ES_PORT": "1", "OBSKITPY_SERVICE": "a"}, timeout=30) is True and calls["n"] == 3

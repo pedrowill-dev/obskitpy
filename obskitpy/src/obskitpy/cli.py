@@ -42,11 +42,13 @@ class NotInitialized(CliError):
 
 def prog() -> str:
     """Como o usuário deve chamar a CLI aqui (`obskitpy`, `uv run obskitpy` ou `python -m obskitpy`)."""
-    if shutil.which("obskitpy"):
+    exe = shutil.which("obskitpy")
+    uv_project = bool(shutil.which("uv")) and Path("pyproject.toml").exists()
+    if exe and not (uv_project and ".venv" in Path(exe).parts):  # no PATH do usuário, de verdade
         return "obskitpy"
-    if shutil.which("uv") and Path("pyproject.toml").exists():
+    if uv_project:
         return "uv run obskitpy"
-    return "python -m obskitpy"
+    return "obskitpy" if exe else "python -m obskitpy"
 
 
 def cmd(text: str) -> str:
@@ -252,6 +254,41 @@ def compose(obs: Path, env: dict[str, str], args: list[str], on_line=None, _retr
                    hint=f"Rode `{cmd('doctor')}` para diagnosticar (ele aponta a correção).")
 
 
+def collector_ready(env: dict[str, str]) -> bool:
+    """O Collector responde OTLP/HTTP? (a porta publicada pelo Docker aceita conexão antes de ele estar de pé)"""
+    req = urllib.request.Request(f"http://localhost:{env['OTLP_HTTP_PORT']}/v1/logs", data=b'{"resourceLogs":[]}',
+                                 headers={"content-type": "application/json"}, method="POST")
+    try:
+        return urllib.request.urlopen(req, timeout=3).status == 200
+    except OSError:
+        return False
+
+
+def wait_collector(env: dict[str, str], timeout: int = 90) -> None:
+    deadline = time.time() + timeout
+    while not collector_ready(env):
+        if time.time() > deadline:
+            raise CliError("o Collector não respondeu a tempo.", hint=f"Veja os logs: docker compose -p obskitpy-{env['OBSKITPY_SERVICE']} logs otel-collector")
+        time.sleep(1)
+
+
+def wait_data(env: dict[str, str], timeout: int = 60) -> bool:
+    """Espera os dados do serviço ficarem consultáveis (a 1ª criação dos data streams leva alguns segundos)."""
+    base = f"http://localhost:{env['ES_PORT']}"
+    body = json.dumps({"query": {"term": {"resource.attributes.service.name": env["OBSKITPY_SERVICE"]}}}).encode()
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen(urllib.request.Request(f"{base}/_refresh", method="POST"), timeout=5).read()
+            req = urllib.request.Request(f"{base}/logs-generic.otel-*/_count", data=body, headers={"content-type": "application/json"}, method="POST")
+            if json.loads(urllib.request.urlopen(req, timeout=5).read()).get("count", 0) > 0:
+                return True
+        except (OSError, ValueError):
+            pass
+        time.sleep(1.5)
+    return False
+
+
 def kibana_step(env: dict[str, str]) -> None:
     with ui.Spinner("Esperando o Kibana ficar pronto") as sp:
         try:
@@ -284,6 +321,8 @@ def bring_up(obs: Path, env: dict[str, str]) -> None:
         except CliError:
             sp.fail("Não foi possível subir a stack")
             raise
+        sp.update("esperando o Collector aceitar dados")
+        wait_collector(env)
         sp.ok("Stack no ar")
     if uses_kibana(env):
         kibana_step(env)
@@ -317,12 +356,9 @@ def run_demo(env: dict[str, str]) -> bool:
             ui.hint((proc.stderr or proc.stdout).strip().splitlines()[-1] if (proc.stderr or proc.stdout).strip() else "")
             return False
         sp.update("deixando os dados prontos para consulta")
-        time.sleep(2)
-        try:  # sem isto, o Elasticsearch só deixa os primeiros dados consultáveis depois de ~30 s
-            urllib.request.urlopen(urllib.request.Request(f"http://localhost:{env['ES_PORT']}/_refresh", method="POST"), timeout=10).read()
-        except OSError:
-            pass
-        sp.ok(f"Exemplo enviado {ui.paint('(' + DEMO_FILE + ' — pode apagar quando quiser)', 'gray')}")
+        ready = wait_data(env)
+        (sp.ok if ready else sp.warn)(f"Exemplo enviado {ui.paint('(' + DEMO_FILE + ' — pode apagar quando quiser)', 'gray')}"
+                                      + ("" if ready else ui.paint(" — os dados podem levar alguns segundos para aparecer", "gray")))
     return True
 
 
@@ -397,7 +433,25 @@ def cmd_init(args) -> None:
     obs = Path(args.dir)
     ui.banner(__version__)
     if (obs / ".env").exists() and not args.force:
-        raise CliError(f"{obs}/ já foi inicializada.", hint="Use --force para recriar (o dashboard.ndjson atual será perdido).")
+        if not interactive:
+            raise CliError(f"{obs}/ já foi inicializada.", hint=f"Use {cmd('init --force')} para recriar (guardo uma cópia em {obs}.bak) ou {cmd('up')} para subir como está.")
+        current = read_env(obs / ".env")
+        ui.out(f"  {ui.paint('Esta pasta já tem o obskitpy:', 'gray')} serviço {ui.paint(current['OBSKITPY_SERVICE'], 'teal', 'bold')}, "
+               f"interface {ui.paint(current.get('OBSKITPY_LOCAL', 'kibana'), 'teal', 'bold')}.\n")
+        what = ui.choose("O que você quer fazer?", [
+            ("up", "Subir a stack como está", "roda o `up` com a configuração atual"),
+            ("again", "Reconfigurar", f"refaz o assistente (escolher interface, portas...); guardo uma cópia em {obs}.bak"),
+            ("cancel", "Cancelar", "não mexe em nada"),
+        ])
+        if what == "up":
+            return cmd_up(args)
+        if what == "cancel":
+            return
+        args.force = True
+    if args.force and obs.exists():  # recriar nunca perde o que existia
+        backup = obs.with_name(obs.name + ".bak")
+        shutil.copytree(obs, backup, dirs_exist_ok=True)
+        ui.hint(f"Cópia da configuração anterior em {backup}/")
 
     default_service = sanitize(Path.cwd().name)
     if interactive:
@@ -567,17 +621,14 @@ def cmd_run(args) -> None:
     if not stack_reachable(env):
         ui.warn("A stack não está no ar. Subindo agora…")
         bring_up(obs, env)
+    wait_collector(env)
     endpoint = f"http://localhost:{env['OTLP_GRPC_PORT']}"
     ui.out(f"{ui.paint('▶', 'teal', 'bold')} {ui.paint(' '.join(command), 'bold')}  {ui.paint('→ enviando para ' + endpoint, 'gray')}\n")
     try:
         code = subprocess.call(command, env={**os.environ, "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint})
     except FileNotFoundError:
         raise CliError(f"não encontrei o comando {command[0]!r}.", hint="Confira o nome do programa (ex.: python app.py).")
-    time.sleep(2)  # o Collector leva um instante para entregar o último lote
-    try:  # deixa os primeiros dados consultáveis na hora
-        urllib.request.urlopen(urllib.request.Request(f"http://localhost:{env['ES_PORT']}/_refresh", method="POST"), timeout=5).read()
-    except OSError:
-        pass
+    wait_data(env, timeout=20)  # o Collector e o Elasticsearch levam um instante para entregar o último lote
     ui.out(f"\n{ui.paint('✔' if code == 0 else '!', 'green' if code == 0 else 'amber', 'bold')} Terminou (código {code}). "
            f"Veja no dashboard: {ui.link(primary_url(env))}")
     sys.exit(code)

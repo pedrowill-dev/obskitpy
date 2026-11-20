@@ -34,6 +34,8 @@ algo pede a sua confirmação.
 | Porta ocupada ao subir | Escolhe a próxima livre, grava no `.env` e tenta de novo (uma porta por vez, se preciso). |
 | Comando com atalho ou erro de digitação (`start`, `ps`, `upp`) | Entende (`up`, `status`...) e avisa. Para os outros, sugere: "Você quis dizer…?". |
 | Pasta sem `observability/` | Oferece rodar o assistente `init` na hora. |
+| `init` numa pasta que já tem o obskitpy | Pergunta: subir como está, reconfigurar (guarda uma cópia em `observability.bak/`) ou cancelar. |
+| Collector ainda subindo / dados ainda indexando | Espera o Collector aceitar dados e os dados ficarem consultáveis antes de rodar o exemplo ou terminar o `run`. |
 | `obskitpy` fora do PATH | As dicas já aparecem como `uv run obskitpy ...` (ou `python -m obskitpy ...`). |
 
 A saída é colorida, com spinners e caixas. Ela respeita `NO_COLOR` e vira texto simples em pipes e CI
@@ -56,10 +58,10 @@ Com terminal interativo, faz perguntas (e usa os padrões onde você apertar Ent
 | `--dash-port` | 8600 | Porta local do dash-obskitpy (se usar). |
 | `--otlp-grpc-port` | 4317 | Porta local do Collector (gRPC) — a que a biblioteca usa. |
 | `--otlp-http-port` | 4318 | Porta local do Collector (HTTP). |
-| `--force` | — | Recria uma instalação existente (**o `dashboard.ndjson` atual é perdido**). |
+| `--force` | — | Recria uma instalação existente (a anterior fica em `observability.bak/`). |
 
 Portas que você não informar e que estiverem ocupadas são trocadas automaticamente pela próxima livre
-(o `init` avisa). Sem `--force`, ele se recusa a sobrescrever uma pasta já inicializada.
+(o `init` avisa). Numa pasta já inicializada, o terminal interativo pergunta o que fazer; sem terminal, ele pede `--force`.
 
 ### O que o `init` cria
 
