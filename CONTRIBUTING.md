@@ -24,8 +24,15 @@ obskitpy up && python -m noticias_sp         # depois confira o dashboard no Kib
 
 ## Documentação
 
-O site é gerado com MkDocs Material a partir de `docs/` e publicado no GitHub Pages a cada push em `main`.
-Para ver localmente: `uv run --with mkdocs-material==9.5.50 mkdocs serve`.
+O site (HTML/CSS/JS puros, tema escuro) é gerado por `site/build.py` a partir de `docs/*.md` (conteúdo) e
+`site/` (layout, `landing.html`, `assets/`) e publicado no GitHub Pages a cada push em `main`.
+Para ver localmente:
+
+```bash
+uv run --with markdown python site/build.py && python3 -m http.server -d _site 8000
+```
+
+Para adicionar uma página: crie `docs/nome.md` e registre-a em `NAV`, no `site/build.py`.
 
 ## Convenções
 

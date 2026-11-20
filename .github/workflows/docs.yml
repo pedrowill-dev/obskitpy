@@ -1,9 +1,10 @@
 name: Docs
-# Publica o site (MkDocs Material) no GitHub Pages: https://pedrowill-dev.github.io/obskitpy/
+# Gera o site (HTML/CSS/JS puro) a partir de docs/*.md e site/ e publica no GitHub Pages:
+# https://pedrowill-dev.github.io/obskitpy/
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "mkdocs.yml", ".github/workflows/docs.yml"]
+    paths: ["docs/**", "site/**", ".github/workflows/docs.yml"]
   workflow_dispatch:
 
 permissions:
@@ -21,10 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv run --with "mkdocs-material==9.5.50" mkdocs build --strict
+      - run: uv run --with "markdown==3.7" python site/build.py
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: _site
 
   deploy:
     needs: build
