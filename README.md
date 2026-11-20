@@ -69,6 +69,8 @@ De um erro ao trace completo, pelo `trace_id` — veja qual operação falhou e 
 
 ## Documentação
 
+📖 **Site de documentação:** https://pedrowill-dev.github.io/obskitpy/
+
 1. [Início rápido](docs/inicio-rapido.md) — do zero ao dashboard em 5 minutos
 2. [Guia do obskitpy](docs/guia-obskitpy.md) — referência da CLI e da biblioteca
 3. [Dashboards](docs/dashboards.md) — o que cada painel mostra, como criar os seus e versioná-los

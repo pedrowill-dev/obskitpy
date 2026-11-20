@@ -83,7 +83,7 @@ aguarde ~30 s e atualize. Confira também a janela de tempo (canto superior dire
 
 - Adicionar painéis próprios e versioná-los: [Dashboards](dashboards.md)
 - Métricas de negócio, atributos nos spans, produção de erros: [Guia do obskitpy](guia-obskitpy.md)
-- Um projeto real completo: [exemplo das notícias](../exemplo-noticias-sp/README.md)
+- Um projeto real completo: [exemplo das notícias](exemplo.md)
 - Algo deu errado? [Solução de problemas](solucao-de-problemas.md)
 
 ## Encerrar

@@ -1,7 +1,7 @@
 # Publicando no PyPI
 
 Para mantenedores. Depois de publicado, qualquer pessoa usa com `uv add obskitpy`, `pip install obskitpy`
-ou `uvx obskitpy`. O workflow [`publish.yml`](../.github/workflows/publish.yml) usa
+ou `uvx obskitpy`. O workflow [`publish.yml`](https://github.com/pedrowill-dev/obskitpy/blob/main/.github/workflows/publish.yml) usa
 [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC): **não existe token guardado** no GitHub.
 
 ## Configuração única

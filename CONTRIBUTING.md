@@ -22,6 +22,11 @@ cd exemplo-noticias-sp
 obskitpy up && python -m noticias_sp         # depois confira o dashboard no Kibana
 ```
 
+## Documentação
+
+O site é gerado com MkDocs Material a partir de `docs/` e publicado no GitHub Pages a cada push em `main`.
+Para ver localmente: `uv run --with mkdocs-material==9.5.50 mkdocs serve`.
+
 ## Convenções
 
 - Mudou algo em `obskitpy/src/obskitpy/templates/`? Rode um `obskitpy init` + `obskitpy up` num projeto novo para validar.

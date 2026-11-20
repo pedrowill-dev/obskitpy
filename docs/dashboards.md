@@ -49,7 +49,7 @@ O `export` inclui o dashboard e tudo que ele referencia (visualizações, buscas
 ### B) Por código (revisável em pull request)
 
 Gere o `dashboard.ndjson` por um script Python partindo do dashboard base — o
-[exemplo das notícias](../exemplo-noticias-sp/observability/extend_dashboard.py) faz isso:
+[exemplo das notícias](https://github.com/pedrowill-dev/obskitpy/blob/main/exemplo-noticias-sp/observability/extend_dashboard.py) faz isso:
 
 ```python
 from obskitpy.dashboard import build, agg, metric_vis, chart_vis, table_vis, terms, date_histogram, ref, search_source
