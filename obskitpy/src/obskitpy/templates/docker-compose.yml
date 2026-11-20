@@ -45,6 +45,39 @@ services:
       timeout: 3s
       retries: 20
 
+  # Portal de alertas e integrações (perfil `portal`): API FastAPI + PostgreSQL. Ative com `obskitpy portal enable`.
+  postgres:
+    profiles: [portal]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: obskitpy
+      POSTGRES_USER: obskitpy
+    env_file:
+      - {path: .portal.env, required: false}   # POSTGRES_PASSWORD
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U obskitpy -d obskitpy"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  portal:
+    profiles: [portal]
+    image: python:3.12-slim
+    env_file:
+      - {path: .portal.env, required: false}   # DATABASE_URL, OBSKITPY_SECRET_KEY, administrador inicial, OBSKITPY_PIP_SPEC
+    command: ["sh", "-c", "pip install --no-cache-dir --quiet \"$${OBSKITPY_PIP_SPEC}\" && exec uvicorn obskitpy.portal.app:create_app --factory --host 0.0.0.0 --port 8000"]
+    ports: ["127.0.0.1:${PORTAL_PORT:-8700}:8000"]
+    volumes: [portal_pip:/root/.cache/pip]
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)\""]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 120s
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.116.1
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -55,3 +88,5 @@ services:
 
 volumes:
   esdata:
+  pgdata:
+  portal_pip:

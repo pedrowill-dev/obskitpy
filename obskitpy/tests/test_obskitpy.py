@@ -522,3 +522,50 @@ def test_dash_empty_state_suggests_other_projects():
     from importlib import resources
     js = resources.files("obskitpy.templates").joinpath("dash/app.js").read_text()
     assert "data-svc" in js and "Mas há dados de outros projetos" in js and "emptyShown" in js
+
+
+# ---------- portal: CLI ----------
+
+def test_portal_enable_writes_files_secrets_and_gitignore(tmp_path, monkeypatch):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--local", "dash-obskitpy", "--standalone", "--yes"])
+    main(["portal", "enable", "--dir", str(obs), "--no-start", "--admin-email", "ops@empresa.com"])
+    env = cli.read_env(obs / ".env")
+    assert env["OBSKITPY_PORTAL"] == "1" and "portal" in env["COMPOSE_PROFILES"].split(",") and env["PORTAL_PORT"].isdigit()
+    secrets = cli.read_env(obs / ".portal.env")
+    assert len(secrets["OBSKITPY_SECRET_KEY"]) >= 48 and secrets["OBSKITPY_ADMIN_EMAIL"] == "ops@empresa.com"
+    assert secrets["DATABASE_URL"].startswith("postgresql://obskitpy:") and secrets["OBSKITPY_PIP_SPEC"].startswith("obskitpy[portal]==")
+    assert oct((obs / ".portal.env").stat().st_mode & 0o777) == "0o600"
+    ignored = (obs / ".gitignore").read_text().splitlines()
+    assert ".portal.env" in ignored
+    assert "portal:" in (obs / "docker-compose.yml").read_text() and "location /api/" in (obs / "nginx.conf").read_text()
+    first = secrets["OBSKITPY_SECRET_KEY"]
+    main(["portal", "enable", "--dir", str(obs), "--no-start"])  # de novo: mantém os segredos
+    assert cli.read_env(obs / ".portal.env")["OBSKITPY_SECRET_KEY"] == first
+
+
+def test_portal_enable_requires_dash_and_own_stack(tmp_path):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--local", "kibana", "--standalone", "--yes"])
+    with pytest.raises(SystemExit):
+        main(["portal", "enable", "--dir", str(obs), "--no-start"])
+
+
+def test_compose_profiles_include_portal():
+    assert cli.compose_profiles({"OBSKITPY_LOCAL": "dash-obskitpy"}) == "dash"
+    assert cli.compose_profiles({"OBSKITPY_LOCAL": "ambos", "OBSKITPY_PORTAL": "1"}) == "kibana,dash,portal"
+
+
+def test_dash_has_integrations_tab():
+    from importlib import resources
+    t = resources.files("obskitpy.templates")
+    assert 'data-tab="integrations"' in t.joinpath("dash/index.html").read_text()
+    js = t.joinpath("dash/app.js").read_text()
+    for needle in ("papi(", "Entrar no portal", "obskitpy portal enable", "X-Obskitpy-Csrf"):
+        assert needle in js
+
+
+def test_nginx_resolves_upstreams_lazily():
+    from importlib import resources
+    conf = resources.files("obskitpy.templates").joinpath("nginx.conf").read_text()
+    assert "resolver 127.0.0.11" in conf and "set $portal" in conf and "set $elasticsearch" in conf

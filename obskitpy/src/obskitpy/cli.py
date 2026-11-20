@@ -4,6 +4,7 @@ import difflib
 import json
 import os
 import re
+import secrets as pysecrets
 import shutil
 import socket
 import subprocess
@@ -17,8 +18,8 @@ from pathlib import Path
 from . import __version__, dashboard, docker, kibana, ui
 
 DEFAULT_DIR = "observability"
-DEFAULT_PORTS = {"ES_PORT": 9200, "KIBANA_PORT": 5601, "DASH_PORT": 8600, "OTLP_GRPC_PORT": 4317, "OTLP_HTTP_PORT": 4318}
-PORT_LABELS = {"ES_PORT": "Elasticsearch", "KIBANA_PORT": "Kibana", "DASH_PORT": "dash-obskitpy",
+DEFAULT_PORTS = {"ES_PORT": 9200, "KIBANA_PORT": 5601, "DASH_PORT": 8600, "OTLP_GRPC_PORT": 4317, "OTLP_HTTP_PORT": 4318, "PORTAL_PORT": 8700}
+PORT_LABELS = {"PORTAL_PORT": "portal", "ES_PORT": "Elasticsearch", "KIBANA_PORT": "Kibana", "DASH_PORT": "dash-obskitpy",
                "OTLP_GRPC_PORT": "OTLP gRPC", "OTLP_HTTP_PORT": "OTLP HTTP"}
 TEMPLATE_FILES = ("docker-compose.yml", "otel-collector-config.yaml")
 LOCAL_CHOICES = ("kibana", "dash-obskitpy", "ambos")
@@ -86,6 +87,11 @@ def uses_dash(env: dict[str, str]) -> bool:
 
 def profiles_for(local: str) -> str:
     return {"kibana": "kibana", "dash-obskitpy": "dash", "ambos": "kibana,dash"}[local]
+
+
+def compose_profiles(env: dict[str, str]) -> str:
+    base = profiles_for(env.get("OBSKITPY_LOCAL", "kibana"))
+    return base + (",portal" if env.get("OBSKITPY_PORTAL") == "1" else "")
 
 
 def ports_for(local: str) -> list[str]:
@@ -240,7 +246,10 @@ def compose(obs: Path, env: dict[str, str], args: list[str], on_line=None, _retr
     where = stack_dir(obs, env)
     project = env.get("OBSKITPY_STACK_SERVICE") or env["OBSKITPY_SERVICE"]
     full = base + ["--project-directory", str(where), "-f", str(where / "docker-compose.yml"), "-p", f"obskitpy-{project}", *args]
-    run_env = {**os.environ, "COMPOSE_PROFILES": profiles_for(env.get("OBSKITPY_LOCAL", "kibana"))}
+    override = where / "docker-compose.override.yml"  # só para desenvolvimento do próprio obskitpy
+    if override.exists():
+        full[full.index("-p"):full.index("-p")] = ["-f", str(override)]
+    run_env = {**os.environ, "COMPOSE_PROFILES": compose_profiles(env)}
     proc = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=run_env)
     lines: list[str] = []
     for line in proc.stdout:
@@ -865,6 +874,127 @@ def dash_outdated(obs: Path) -> list[str]:
     return [n for n, data in dash_files().items() if not (obs / "dash" / n).exists() or (obs / "dash" / n).read_bytes() != data]
 
 
+def set_env_keys(path: Path, updates: dict[str, str]) -> None:
+    """Atualiza (ou acrescenta) chaves no .env preservando comentários."""
+    lines, seen = [], set()
+    for line in path.read_text().splitlines():
+        key = line.partition("=")[0].strip()
+        if "=" in line and not line.lstrip().startswith("#") and key in updates:
+            lines.append(f"{key}={updates[key]}")
+            seen.add(key)
+        else:
+            lines.append(line)
+    lines += [f"{k}={v}" for k, v in updates.items() if k not in seen]
+    path.write_text("\n".join(lines) + "\n")
+
+
+def portal_url(env: dict[str, str]) -> str:
+    return f"{dash_url(env)}/#integrations"
+
+
+def wait_portal(env: dict[str, str], timeout: int = 240) -> None:
+    deadline = time.time() + timeout
+    url = f"http://localhost:{env['PORTAL_PORT']}/api/v1/health"
+    while True:
+        try:
+            if urllib.request.urlopen(url, timeout=3).status == 200:
+                return
+        except OSError:
+            pass
+        if time.time() > deadline:
+            raise CliError("o portal não respondeu a tempo.", hint=f"Veja os logs: docker compose -p obskitpy-{env['OBSKITPY_SERVICE']} logs portal")
+        time.sleep(2)
+
+
+def cmd_portal_enable(args) -> None:
+    """Liga o portal de alertas e integrações: PostgreSQL + API, com segredos gerados e a aba Integrações no dash."""
+    obs = Path(args.dir)
+    env = read_env(obs / ".env")
+    if is_shared(env):
+        raise CliError("o portal fica na pasta que criou a stack.", hint=f"Rode `{cmd('portal enable')}` em {env['OBSKITPY_STACK_DIR']}.")
+    if not uses_dash(env):
+        raise CliError("a tela de Integrações fica no dash-obskitpy, e este projeto usa só o Kibana.",
+                       hint=f"Recrie com `{cmd('init --force --local ambos')}` e rode de novo.")
+    ui.banner(__version__, "portal de alertas e integrações")
+    ui.heading("Configuração")
+    with ui.Spinner("Preparando arquivos e segredos") as sp:
+        for name in ("docker-compose.yml", "nginx.conf"):  # arquivos gerados: ganham os serviços do portal
+            target = obs / name
+            new = resources.files("obskitpy.templates").joinpath(name).read_text()
+            if target.exists() and target.read_text() != new:
+                shutil.copy2(target, target.with_name(target.name + ".bak"))
+            target.write_text(new)
+        if not (obs / "dash").exists():
+            write_dash(obs, env)
+        for name, data in dash_files().items():  # o dash precisa da versão com a aba Integrações
+            (obs / "dash" / name).write_bytes(data)
+        portal_env = obs / ".portal.env"
+        created = not portal_env.exists()
+        if created:
+            admin_pw = pysecrets.token_urlsafe(12)
+            pg_pw = pysecrets.token_urlsafe(24)
+            spec = args.pip_spec or f"obskitpy[portal]=={__version__}"
+            portal_env.write_text("\n".join([
+                "# Segredos do portal. NÃO versione este arquivo (já está no .gitignore).",
+                f"POSTGRES_PASSWORD={pg_pw}",
+                f"DATABASE_URL=postgresql://obskitpy:{pg_pw}@postgres:5432/obskitpy",
+                f"OBSKITPY_SECRET_KEY={pysecrets.token_urlsafe(48)}",
+                f"OBSKITPY_ADMIN_EMAIL={args.admin_email}",
+                f"OBSKITPY_ADMIN_PASSWORD={admin_pw}",
+                f"OBSKITPY_PIP_SPEC={spec}", ""]), encoding="utf-8")
+            portal_env.chmod(0o600)
+        if args.dev_source:  # desenvolvimento do obskitpy: instala o portal a partir do código local
+            (obs / "docker-compose.override.yml").write_text(
+                f'services:\n  portal:\n    volumes:\n      - "{Path(args.dev_source).resolve()}:/pkg:ro"\n')
+        gitignore = obs / ".gitignore"
+        lines = gitignore.read_text().splitlines() if gitignore.exists() else []
+        for entry in (".portal.env", "docker-compose.override.yml"):
+            if entry not in lines:
+                lines.append(entry)
+        gitignore.write_text("\n".join(lines) + "\n")
+        port = args.portal_port or (int(env["PORTAL_PORT"]) if env.get("PORTAL_PORT") else next_free_port(DEFAULT_PORTS["PORTAL_PORT"]))
+        set_env_keys(obs / ".env", {"OBSKITPY_PORTAL": "1", "PORTAL_PORT": str(port), "COMPOSE_PROFILES": compose_profiles({**env, "OBSKITPY_PORTAL": "1"})})
+        sp.ok("Arquivos e segredos prontos" + ("" if created else " (segredos existentes mantidos)"))
+    env = read_env(obs / ".env")
+    if args.no_start:
+        ui.ok(f"Arquivos do portal prontos em {obs}/ (sem subir os containers)")
+        return
+    ui.heading("Subindo PostgreSQL e o portal")
+    ui.hint("A primeira vez baixa as imagens e instala o portal (pode levar alguns minutos).")
+    with ui.Spinner("Subindo a stack com o portal") as sp:
+        try:
+            compose(obs, env, ["up", "-d", "--wait", "--wait-timeout", "420", "--force-recreate", "dash", "postgres", "portal"], on_line=sp.update)
+        except CliError:
+            sp.fail("Não foi possível subir o portal")
+            raise
+        sp.update("esperando o portal responder")
+        wait_portal(env)
+        sp.ok("Portal no ar")
+    pe = read_env(obs / ".portal.env")
+    api_docs = f"http://localhost:{env['PORTAL_PORT']}/api/docs"
+    ui.out()
+    ui.box("Portal de alertas e integrações", [
+        f"{ui.paint('Integrações  ', 'gray')} {ui.link(portal_url(env))}",
+        f"{ui.paint('API e docs    ', 'gray')} {ui.link(api_docs)}",
+        f"{ui.paint('Usuário       ', 'gray')} {pe['OBSKITPY_ADMIN_EMAIL']}",
+        f"{ui.paint('Senha         ', 'gray')} {pe['OBSKITPY_ADMIN_PASSWORD']}",
+    ], accent="amber")
+    ui.hint(f"As credenciais ficam em {obs}/.portal.env (fora do git). Para gerar outra senha: {cmd('portal password')}")
+
+
+def cmd_portal_password(args) -> None:
+    obs = Path(args.dir)
+    env = read_env(obs / ".env")
+    if env.get("OBSKITPY_PORTAL") != "1":
+        raise CliError("o portal não está ativado neste projeto.", hint=f"Rode `{cmd('portal enable')}`.")
+    portal_env = stack_dir(obs, env) / ".portal.env"
+    pe = read_env(portal_env)
+    new_pw = pysecrets.token_urlsafe(12)
+    compose(obs, env, ["exec", "-T", "portal", "python", "-m", "obskitpy.portal.manage", "reset-admin", pe["OBSKITPY_ADMIN_EMAIL"], new_pw])
+    set_env_keys(portal_env, {"OBSKITPY_ADMIN_PASSWORD": new_pw})
+    ui.ok(f"Nova senha de {pe['OBSKITPY_ADMIN_EMAIL']}: {ui.paint(new_pw, 'bold')}")
+
+
 def cmd_dash_update(args) -> None:
     """Atualiza os arquivos do dash-obskitpy (observability/dash/) para a versão do pacote instalado."""
     obs = Path(args.dir)
@@ -934,7 +1064,7 @@ class FriendlyParser(argparse.ArgumentParser):
         super().error(message)
 
 
-COMMANDS = ["init", "up", "down", "status", "open", "run", "doctor", "dash", "dashboard"]
+COMMANDS = ["init", "up", "down", "status", "open", "run", "doctor", "portal", "dash", "dashboard"]
 
 
 def normalize_argv(argv: list[str]) -> list[str]:
@@ -988,6 +1118,20 @@ def build_parser() -> argparse.ArgumentParser:
     command("doctor", cmd_doctor, "diagnostica Docker, Compose, memória e portas")
     run = command("run", cmd_run, "roda o seu programa enviando os dados para a stack (sobe a stack se preciso)")
     run.add_argument("cmd", nargs=argparse.REMAINDER, help="o comando, ex.: python app.py")
+
+    prt = sub.add_parser("portal", help="portal de alertas e integrações (PostgreSQL + API)")
+    prtsub = prt.add_subparsers(dest="action", required=True)
+    pen = prtsub.add_parser("enable", help="liga o portal: PostgreSQL, API, segredos e a aba Integrações no dash")
+    pen.add_argument("--dir", default=DEFAULT_DIR)
+    pen.add_argument("--admin-email", default="admin@obskitpy.local", help="e-mail do administrador inicial")
+    pen.add_argument("--portal-port", type=int, help="porta local da API (padrão: 8700, ou a próxima livre)")
+    pen.add_argument("--pip-spec", help=argparse.SUPPRESS)
+    pen.add_argument("--dev-source", help=argparse.SUPPRESS)
+    pen.add_argument("--no-start", action="store_true", help=argparse.SUPPRESS)
+    pen.set_defaults(fn=cmd_portal_enable)
+    ppw = prtsub.add_parser("password", help="gera uma nova senha para o administrador do portal")
+    ppw.add_argument("--dir", default=DEFAULT_DIR)
+    ppw.set_defaults(fn=cmd_portal_password)
 
     dsh = sub.add_parser("dash", help="mantém o dash-obskitpy (observability/dash/)")
     dshsub = dsh.add_subparsers(dest="action", required=True)

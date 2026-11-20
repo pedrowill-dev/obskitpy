@@ -15,6 +15,8 @@ Todos os comandos aceitam `--dir PASTA` (padrão: `observability`) e devem ser e
 | `obskitpy open [--ui kibana\|dash-obskitpy] [--realtime]` | Abre o dashboard no navegador (padrão: dash-obskitpy se existir, senão Kibana). `--realtime` abre o dash já **ao vivo** (logs a cada 1 s). |
 | `obskitpy dash update` | Atualiza os arquivos do dash-obskitpy (`observability/dash/`) para a versão do pacote instalado; guarda os seus em `.bak`. |
 | `obskitpy run [--] COMANDO...` | **Roda o seu programa** já apontando para a stack (ex.: `obskitpy run python app.py`). Se a stack estiver parada, sobe antes. Sem comando, roda o `obskitpy_demo.py`. |
+| `obskitpy portal enable` | Liga o **portal de alertas e integrações** (PostgreSQL + API + aba Integrações no dash). Veja [Portal](portal.md). |
+| `obskitpy portal password` | Gera uma nova senha para o administrador do portal. |
 | `obskitpy doctor` | Diagnostica Docker, Compose v2, memória do Docker e portas. |
 | `obskitpy dashboard apply` | Importa `observability/dashboard.ndjson` no Kibana (sobrescreve objetos com o mesmo id). |
 | `obskitpy dashboard export` | Grava no `dashboard.ndjson` o dashboard **como está no Kibana agora**. |

@@ -185,13 +185,140 @@
     return `<div class="filters"><select id="metric">${names.map((n) => `<option ${n === sel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select><span class="mono" style="color:var(--muted)">${keys.map((k) => `${esc(k)}: <b style="color:${colors[k]}">${fmtN(totals[k])}</b>`).join(" · ")}</span></div><div class="card"><h2>${esc(sel)}</h2>${stackedChart(buckets, keys, colors)}</div>`;
   }
 
+
+  /* ---------- Integrações (portal de alertas) ---------- */
+  const portal = { user: null, kinds: [], data: null, form: false, kind: "telegram" };
+  async function papi(path, opts = {}) {
+    let r;
+    try {
+      r = await fetch(`api/v1/${path}`, { method: opts.method || "GET", credentials: "same-origin",
+        headers: { "content-type": "application/json", "X-Obskitpy-Csrf": "1" }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    } catch { const e = new Error("sem conexão com o portal"); e.status = 0; throw e; }
+    if (r.status === 204) return null;
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const e = new Error(typeof data.detail === "string" ? data.detail : data.detail?.[0]?.msg || `erro ${r.status}`);
+      e.status = r.status; throw e;
+    }
+    return data;
+  }
+  function toast(msg, bad) {
+    const t = $("#toast"); t.textContent = msg; t.className = "toast" + (bad ? " bad" : ""); t.hidden = false;
+    clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 6000);
+  }
+  const STATUS = { ok: ["OK", "ok"], failed: ["FALHOU", "bad"], untested: ["NÃO TESTADA", "idle"] };
+  const KIND_ICON = { telegram: "✈", teams: "▦", slack: "#", email: "✉" };
+  const canAdmin = () => portal.user?.role === "admin";
+  const canTest = () => ["operator", "admin"].includes(portal.user?.role);
+
+  const notEnabled = () => `<div class="empty"><h3>O portal de alertas ainda não está ativado</h3>
+    <p>Ele guarda as integrações (Telegram, Teams, Slack, e-mail), destinos e contatos em um PostgreSQL local.<br>Para ativar, rode na pasta do projeto:</p>
+    <p><code>obskitpy portal enable</code></p></div>`;
+
+  const loginView = (msg = "") => `<div class="card login"><h2>Entrar no portal</h2>
+    <form id="login" autocomplete="on"><label>E-mail<input name="email" type="email" required autocomplete="username"></label>
+    <label>Senha<input name="password" type="password" required autocomplete="current-password"></label>
+    ${msg ? `<p class="err">${esc(msg)}</p>` : ""}<button class="btn" type="submit">Entrar</button></form>
+    <p class="mono hint">As credenciais do administrador ficam em <code>observability/.portal.env</code>.</p></div>`;
+
+  function fieldHtml(f, secret) {
+    const id = `${secret ? "s" : "c"}_${f.name}`;
+    if (f.type === "checkbox") return `<label class="chk"><input type="checkbox" data-${secret ? "secret" : "config"}="${f.name}" ${f.default ? "checked" : ""}> ${esc(f.label)}</label>`;
+    return `<label>${esc(f.label)}${f.required ? "" : " <small>(opcional)</small>"}<input id="${id}" data-${secret ? "secret" : "config"}="${f.name}" type="${f.type === "number" ? "number" : f.type === "password" ? "password" : "text"}" ${f.default != null ? `value="${esc(f.default)}"` : ""} placeholder="${esc(f.placeholder || "")}" autocomplete="off"></label>`;
+  }
+
+  function formHtml() {
+    const k = portal.kinds.find((x) => x.kind === portal.kind) || portal.kinds[0];
+    return `<div class="card pform"><h2>Nova integração</h2><form id="newint">
+      <label>Provedor<select id="kind">${portal.kinds.map((x) => `<option value="${x.kind}" ${x.kind === k.kind ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select></label>
+      <p class="mono hint">${esc(k.help)}</p>
+      <label>Nome da conexão<input id="intname" required placeholder="Ex.: Bot de operações"></label>
+      ${k.config_fields.map((f) => fieldHtml(f, false)).join("")}${k.secret_fields.map((f) => fieldHtml(f, true)).join("")}
+      <div class="row"><button class="btn" type="submit">Salvar</button><button class="btn ghost" type="button" data-act="cancel-form">Cancelar</button></div></form></div>`;
+  }
+
+  const integrationCard = (c, dests) => {
+    const [label, cls] = STATUS[c.status] || STATUS.untested;
+    const mine = dests.filter((d) => d.connection_id === c.id);
+    const test = canTest() ? `<div class="row"><select data-dest-for="${c.id}" aria-label="Destino do teste"><option value="">Só validar credenciais</option>${mine.map((d) => `<option value="${d.id}">Enviar para ${esc(d.name)}</option>`).join("")}</select>
+      <button class="btn small" data-act="test" data-id="${c.id}">Testar</button>${canAdmin() ? `<button class="btn small ghost danger" data-act="del-int" data-id="${c.id}">Remover</button>` : ""}</div>` : "";
+    return `<div class="pcard"><div class="ptop"><span class="picon">${KIND_ICON[c.kind] || "•"}</span><div><b>${esc(c.name)}</b><small>${esc(c.label)}</small></div><span class="pstat ${cls}">${label}</span></div>
+      <p class="pmeta">${c.destinations} destino(s)${c.last_tested_at ? ` · testada em ${fmtDateTime(c.last_tested_at)}` : ""}</p>
+      ${c.last_error ? `<p class="perr">${esc(c.last_error)}</p>` : ""}${test}</div>`;
+  };
+
+  const destForm = (ints) => canAdmin() && ints.length ? `<form id="newdest" class="inline"><select id="dconn">${ints.map((c) => `<option value="${c.id}">${esc(c.name)} (${esc(c.label)})</option>`).join("")}</select>
+    <input id="dname" required placeholder="Nome do destino (ex.: Operações)"><input id="dtarget" placeholder="ID do chat / e-mail (se o provedor pedir)"><button class="btn small" type="submit">Adicionar destino</button></form>` : "";
+
+  async function integrationsTab() {
+    try { await papi("health"); } catch { return notEnabled(); }
+    try { portal.user = await papi("auth/me"); } catch (e) { portal.user = null; if (e.status !== 401) return notEnabled(); }
+    if (!portal.user) return loginView();
+    const [kinds, ints, dests, contacts, groups] = await Promise.all([papi("integrations/kinds"), papi("integrations"), papi("destinations"), papi("contacts"), papi("contact-groups")]);
+    const audit = canAdmin() ? await papi("audit?limit=30") : [];
+    portal.kinds = kinds;
+    const rows = (list, cols) => list.length ? `<table><thead><tr>${cols.map((c) => `<th>${c[0]}</th>`).join("")}</tr></thead><tbody>${list.map((x) => `<tr>${cols.map((c) => `<td>${c[1](x)}</td>`).join("")}</tr>`).join("")}</tbody></table>` : '<p class="mono hint">Nada cadastrado ainda.</p>';
+    return `<div class="pbar"><span>Logado como <b>${esc(portal.user.email)}</b> <span class="sev INFO">${esc(portal.user.role)}</span></span><button class="btn small ghost" data-act="logout">Sair</button></div>
+      <div class="psec"><div class="phead"><h2>Integrações</h2>${canAdmin() ? '<button class="btn small" data-act="new-form">+ Nova integração</button>' : ""}</div>
+        ${portal.form ? formHtml() : ""}
+        <div class="pgrid">${ints.length ? ints.map((c) => integrationCard(c, dests)).join("") : '<div class="card"><p class="mono hint">Nenhuma integração ainda. Conecte o Telegram, o Teams, o Slack ou um e-mail para receber alertas.</p></div>'}</div></div>
+      <div class="psec card"><div class="phead"><h2>Destinos</h2></div>${destForm(ints)}
+        ${rows(dests, [["Destino", (d) => esc(d.name)], ["Integração", (d) => esc(d.connection)], ["Alvo", (d) => `<code>${esc(d.target || "—")}</code>`], ["", (d) => canAdmin() ? `<button class="btn small ghost danger" data-act="del-dest" data-id="${d.id}">Remover</button>` : ""]])}</div>
+      <div class="psec grid2"><div class="card"><div class="phead"><h2>Contatos</h2></div>${canAdmin() ? `<form id="newcontact" class="inline"><input id="cname" required placeholder="Nome"><input id="cemail" type="email" placeholder="E-mail (opcional)"><button class="btn small" type="submit">Adicionar</button></form>` : ""}
+        ${rows(contacts, [["Nome", (c) => esc(c.name)], ["E-mail", (c) => esc(c.email || "—")], ["", (c) => canAdmin() ? `<button class="btn small ghost danger" data-act="del-contact" data-id="${c.id}">Remover</button>` : ""]])}</div>
+        <div class="card"><div class="phead"><h2>Grupos</h2></div>${canAdmin() ? `<form id="newgroup" class="inline"><input id="gname" required placeholder="Ex.: Equipe SAP"><button class="btn small" type="submit">Criar grupo</button></form>` : ""}
+        ${rows(groups, [["Grupo", (g) => esc(g.name)], ["Membros", (g) => g.member_ids.length], ["", (g) => canAdmin() ? `<button class="btn small ghost danger" data-act="del-group" data-id="${g.id}">Remover</button>` : ""]])}</div></div>
+      ${canAdmin() ? `<div class="psec card"><div class="phead"><h2>Auditoria</h2></div>${rows(audit, [["Quando", (a) => fmtDateTime(a.at)], ["Quem", (a) => esc(a.actor)], ["Ação", (a) => `<code>${esc(a.action)}</code>`]])}</div>` : ""}`;
+  }
+
+  function portalWire(app) {
+    const run = async (fn, okMsg) => { try { await fn(); if (okMsg) toast(okMsg); } catch (e) { if (e.status === 401) portal.user = null; toast(e.message, true); } state.lastHtml = ""; render(false); };
+    const form = $("#login", app);
+    if (form) form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try { await papi("auth/login", { method: "POST", body: { email: form.email.value, password: form.password.value } }); state.lastHtml = ""; render(false); }
+      catch (err) { $(".card.login", app).outerHTML = loginView(err.message); portalWire($("#app")); }
+    });
+    $$("[data-act]", app).forEach((b) => b.addEventListener("click", () => {
+      const id = b.dataset.id, act = b.dataset.act;
+      if (act === "logout") return run(() => papi("auth/logout", { method: "POST" }).then(() => (portal.user = null)));
+      if (act === "new-form") { portal.form = true; state.lastHtml = ""; return render(false); }
+      if (act === "cancel-form") { portal.form = false; state.lastHtml = ""; return render(false); }
+      if (act === "test") {
+        const dest = $(`[data-dest-for="${id}"]`, app).value;
+        b.disabled = true; b.textContent = "Testando…";
+        return run(async () => { const r = await papi(`integrations/${id}/test`, { method: "POST", body: { destination_id: dest ? +dest : null } }); toast(r.detail + (r.retry_after ? ` (tente de novo em ${r.retry_after}s)` : ""), !r.ok); });
+      }
+      const confirmDel = (what) => confirm(`Remover ${what}? Esta ação não pode ser desfeita.`);
+      if (act === "del-int" && confirmDel("esta integração e os seus destinos")) return run(() => papi(`integrations/${id}`, { method: "DELETE" }), "Integração removida");
+      if (act === "del-dest" && confirmDel("este destino")) return run(() => papi(`destinations/${id}`, { method: "DELETE" }), "Destino removido");
+      if (act === "del-contact" && confirmDel("este contato")) return run(() => papi(`contacts/${id}`, { method: "DELETE" }), "Contato removido");
+      if (act === "del-group" && confirmDel("este grupo")) return run(() => papi(`contact-groups/${id}`, { method: "DELETE" }), "Grupo removido");
+    }));
+    const kind = $("#kind", app);
+    if (kind) kind.addEventListener("change", () => { portal.kind = kind.value; state.lastHtml = ""; render(false); });
+    const ni = $("#newint", app);
+    if (ni) ni.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const grab = (attr) => Object.fromEntries($$(`[data-${attr}]`, ni).map((el) => [el.dataset[attr], el.type === "checkbox" ? el.checked : el.type === "number" ? (el.value === "" ? null : +el.value) : el.value.trim()]));
+      run(async () => { await papi("integrations", { method: "POST", body: { kind: portal.kind, name: $("#intname", ni).value, config: grab("config"), secrets: grab("secret") } }); portal.form = false; }, "Integração salva. Use “Testar” para confirmar.");
+    });
+    const nd = $("#newdest", app);
+    if (nd) nd.addEventListener("submit", (e) => { e.preventDefault(); run(() => papi("destinations", { method: "POST", body: { connection_id: +$("#dconn", nd).value, name: $("#dname", nd).value, target: $("#dtarget", nd).value } }), "Destino adicionado"); });
+    const nc = $("#newcontact", app);
+    if (nc) nc.addEventListener("submit", (e) => { e.preventDefault(); run(() => papi("contacts", { method: "POST", body: { name: $("#cname", nc).value, email: $("#cemail", nc).value } }), "Contato adicionado"); });
+    const ng = $("#newgroup", app);
+    if (ng) ng.addEventListener("submit", (e) => { e.preventDefault(); run(() => papi("contact-groups", { method: "POST", body: { name: $("#gname", ng).value } }), "Grupo criado"); });
+  }
+
   /* ---------- orquestração ---------- */
-  const TABS = { overview, logs: logsTab, traces: tracesTab, metrics: metricsTab };
+  const TABS = { overview, logs: logsTab, traces: tracesTab, metrics: metricsTab, integrations: integrationsTab };
   let busy = false;
   async function render(showSpin = true) {
     if (busy) return; busy = true; state.emptyShown = false;
     const btn = $("#refresh"); if (showSpin) { btn.classList.remove("spin"); void btn.offsetWidth; btn.classList.add("spin"); }
     $$("#tabs a").forEach((a) => a.classList.toggle("on", a.dataset.tab === state.tab));
+    document.body.dataset.tab = state.tab;
     try {
       const html = await TABS[state.tab]();
       if (html !== state.lastHtml) { $("#app").innerHTML = html; wire(); state.lastHtml = html; } // sem piscar quando nada mudou
@@ -205,6 +332,7 @@
   function wire() {
     const app = $("#app");
     wireTips(app);
+    if (state.tab === "integrations") return portalWire(app);
     $$("[data-svc]", app).forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); selectService(a.dataset.svc); }));
     $$("[data-err]", app).forEach((tr) => tr.addEventListener("click", () => { state.errType = tr.dataset.err; state.seen = null; go("logs"); }));
     $$("[data-sev]", app).forEach((b) => b.addEventListener("click", () => { state.sev = b.dataset.sev; state.seen = null; render(false); }));
@@ -251,7 +379,7 @@
     clearTimeout(timer);
     if (!state.auto) return;
     timer = setTimeout(() => {
-      if (document.hidden) return schedule();
+      if (document.hidden || state.tab === "integrations") return schedule(); // formulários não são recarregados sozinhos
       if (paused()) { $("#status").innerHTML = '<i class="dot"></i> ⏸ pausado: detalhe de log aberto (feche para voltar ao vivo)'; return schedule(); }
       render(false).finally(schedule);
     }, Math.max(spanMs(state.refresh), 1000));

@@ -17,6 +17,7 @@
       <a href="#logs" data-tab="logs">Logs</a>
       <a href="#traces" data-tab="traces">Traces</a>
       <a href="#metrics" data-tab="metrics">Métricas</a>
+      <a href="#integrations" data-tab="integrations">Integrações</a>
     </nav>
     <div class="tools">
       <button class="rt" id="rt" type="button" aria-pressed="false" title="Tempo real: últimos 5 min, atualizando a cada 1 s (tecla R)"><i></i><span>Realtime</span></button>
@@ -31,5 +32,6 @@
 <footer class="wrap foot"><span id="status"><i class="dot"></i> conectando…</span><span>dash-obskitpy · OpenTelemetry + Elasticsearch</span></footer>
 <script src="config.js"></script>
 <script src="app.js"></script>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>
