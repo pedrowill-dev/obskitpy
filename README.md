@@ -14,7 +14,6 @@ uv add "obskitpy[requests]"      # ou: pip install "obskitpy[requests]"
 uv run obskitpy init     # assistente: escolhe onde visualizar, sobe a stack e roda um exemplo
 ```
 
-![Assistente obskitpy init](docs/images/cli-init.png)
 
 Sem terminal interativo (scripts, CI), escolha por flags: `obskitpy init --local dash-obskitpy --yes --up --demo`
 (`--local kibana`, `dash-obskitpy` ou `ambos`).
@@ -38,6 +37,17 @@ shutdown()                                   # descarrega os dados pendentes
 
 Abra o dashboard com `obskitpy open`: **dash-obskitpy** em http://localhost:8600 ou, no Kibana,
 http://localhost:5601 → *Dashboards* → `meu-servico - Observabilidade`.
+
+## Como funciona
+
+![Como o obskitpy funciona: automações Python → obskitpy → Elasticsearch → dash-obskitpy ou Kibana](docs/images/como-funciona.png)
+
+1. Sua automação (RPA, ETL, integração) roda como sempre e chama `obskitpy.setup("meu-servico")`.
+2. O obskitpy captura **logs, métricas e traces** (e os erros, com tipo e origem) e envia por OpenTelemetry.
+3. Tudo é gravado no **Elasticsearch** local (Docker).
+4. Você visualiza no **dash-obskitpy** (leve, com Realtime) ou no **Kibana** (completo) — você escolhe no `obskitpy init`.
+
+Vários projetos podem usar a **mesma stack**: o `init` detecta uma stack já rodando e pergunta se você quer incluir a nova automação nela; no dash, um seletor no topo troca de projeto.
 
 ## Como fica
 

@@ -86,3 +86,8 @@ tr.new td{animation:flash 2.4s ease-out}@keyframes flash{0%{background:rgba(25,2
 @media(prefers-reduced-motion:reduce){.rt i,.live i,tr.new td{animation:none!important}}
 
 @media(max-width:1480px){.ctl .k{display:none}.ctl{padding:7px 10px}}
+
+select.svc{appearance:none;-webkit-appearance:none;cursor:pointer;padding:5px 30px 5px 11px;max-width:220px;text-overflow:ellipsis;color:var(--text);outline:none;
+  background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2394a4c2' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center}
+select.svc:hover,select.svc:focus{border-color:var(--teal)}
+select.svc option{background:#111a2f;color:var(--text)}

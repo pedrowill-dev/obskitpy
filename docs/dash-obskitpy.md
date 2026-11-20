@@ -24,6 +24,28 @@ obskitpy open        # abre em http://localhost:8600
 
 Mudou de ideia? `obskitpy init --force --local ambos` recria a configuração (os dados no Elasticsearch continuam).
 
+## Vários projetos, uma stack
+
+Cada automação é um **projeto** (o nome do serviço em `obskitpy.setup("nome")`). Vários projetos podem usar a **mesma
+stack**: no `obskitpy init` de um projeto novo, o assistente procura stacks do obskitpy já rodando e pergunta
+**"Quer incluir essa automação nela?"**. Dizendo sim, nada novo sobe: o projeto só ganha um `.env` apontando para a stack
+existente, e o dash passa a listá-lo.
+
+No topo do dash, o **seletor de projeto** (ao lado da logo) troca o que você está vendo. A lista traz todos os projetos
+que já mandaram dados ou foram incluídos, e a sua escolha fica salva. O endereço também guarda o projeto
+(`#overview?service=teste-b`), então dá para compartilhar o link.
+
+```bash
+cd outra-automacao
+obskitpy init            # "Encontrei uma stack... incluir? [1] Incluir  [2] Criar uma separada"
+obskitpy init --join     # o mesmo, sem perguntas (usa a stack encontrada)
+```
+
+- **`obskitpy down`** num projeto que usa a stack de outro **não derruba nada** (outros projetos dependem dela).
+  Para derrubar, rode `down` na pasta do projeto que criou a stack.
+- **No Kibana** cada projeto ganha o seu próprio dashboard (`<projeto>-observability`) na mesma instância.
+- Dois projetos não podem ter o mesmo nome na mesma stack; o assistente pede outro nome.
+
 ## Período, atualização e Realtime
 
 Tudo isso fica no topo da página, e o dash lembra a sua escolha.

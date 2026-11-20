@@ -73,6 +73,16 @@ shutdown = obskitpy.setup("meu-servico")</code></pre>
   </div>
 </section>
 
+<!-- COMO FUNCIONA (DIAGRAMA) -->
+<section class="block">
+  <div class="container">
+    <span class="eyebrow">Visão geral</span>
+    <h2>Como o obskitpy funciona</h2>
+    <p class="sub">Sua automação Python manda logs, métricas e traces; o obskitpy guarda tudo no Elasticsearch, e você escolhe onde ver.</p>
+    <figure style="margin:0"><div class="shot"><img src="assets/images/como-funciona.png" alt="Automações Python enviam logs, métricas e traces ao obskitpy, que grava no Elasticsearch para visualizar no dash-obskitpy ou no Kibana" loading="lazy"></div></figure>
+  </div>
+</section>
+
 <!-- FEATURES -->
 <section class="block alt">
   <div class="container">
@@ -100,7 +110,7 @@ shutdown = obskitpy.setup("meu-servico")</code></pre>
     <div class="cards three">
       <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></div><h3>dash-obskitpy</h3><p>Dashboard próprio do obskitpy: leve, direto ao ponto, sem Kibana. Período e atualização em segundos, minutos ou horas, e o atalho <b>Realtime</b> para ver ao vivo.</p><p style="margin-top:12px"><code>--local dash-obskitpy</code></p></div>
       <div class="card"><div class="ico amber"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div><h3>Kibana</h3><p>Completo: explore logs, traces e métricas a fundo e monte seus próprios painéis, versionados no git.</p><p style="margin-top:12px"><code>--local kibana</code></p></div>
-      <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="16" rx="2"/><rect x="13" y="4" width="8" height="16" rx="2"/></svg></div><h3>Os dois</h3><p>dash-obskitpy para olhar rápido no dia a dia e Kibana para investigar a fundo, com atalho de um para o outro.</p><p style="margin-top:12px"><code>--local ambos</code></p></div>
+      <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="16" rx="2"/><rect x="13" y="4" width="8" height="16" rx="2"/></svg></div><h3>Os dois</h3><p>dash-obskitpy para olhar rápido no dia a dia e Kibana para investigar a fundo, com atalho de um para o outro. Vários projetos na mesma stack, com seletor no dash.</p><p style="margin-top:12px"><code>--local ambos</code></p></div>
     </div>
     <figure style="margin:34px 0 0"><div class="shot"><img src="assets/images/dash-overview.png" alt="Visão geral do dash-obskitpy" loading="lazy"></div><figcaption class="shot-cap">O dash-obskitpy, com a logo do obskitpy: contadores, logs por severidade, erros por origem e duração das operações. <a href="docs/dash-obskitpy.html">Conheça o dash →</a></figcaption></figure>
   </div>
@@ -149,7 +159,6 @@ shutdown()                                  # descarrega os pendentes</code></pr
     <div class="gallery">
       <figure><div class="shot"><img src="assets/images/dash-realtime.png" alt="Modo Realtime do dash-obskitpy" loading="lazy"></div><figcaption class="shot-cap">Realtime: janela de 5 min, atualização a cada 1 s e o selo AO VIVO. Período e atualização editáveis.</figcaption></figure>
       <figure><div class="shot"><img src="assets/images/dash-traces.png" alt="Waterfall de uma execução no dash-obskitpy" loading="lazy"></div><figcaption class="shot-cap">dash-obskitpy: o waterfall de uma execução, com as falhas em vermelho.</figcaption></figure>
-      <figure><div class="shot"><img src="assets/images/cli-init.png" alt="Assistente obskitpy init no terminal" loading="lazy"></div><figcaption class="shot-cap">A CLI: assistente com cores, spinners e checagem do ambiente.</figcaption></figure>
       <figure><div class="shot"><img src="assets/images/investigar-trace.png" alt="Spans de uma execução com erro no Discover" loading="lazy"></div><figcaption class="shot-cap">Investigue um erro pelo <code>trace_id</code>: veja qual operação falhou.</figcaption></figure>
       <figure><div class="shot"><img src="assets/images/dashboard-dados.png" alt="Painéis com os dados extraídos" loading="lazy"></div><figcaption class="shot-cap">Dados de negócio ao lado da saúde do robô.</figcaption></figure>
     </div>

@@ -2,6 +2,8 @@
 
 ## Visão geral
 
+![Como o obskitpy funciona](images/como-funciona.png)
+
 ```
  seu processo Python                 docker compose (observability/)
 ┌──────────────────────┐   OTLP/gRPC   ┌────────────────┐        ┌───────────────┐      ┌────────┐

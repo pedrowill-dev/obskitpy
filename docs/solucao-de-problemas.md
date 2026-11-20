@@ -54,6 +54,12 @@ se faltar o Docker, cria os arquivos mesmo assim para você subir depois com `ob
   `observability/.env`. Rode `python obskitpy_demo.py` (gerado pelo `init --demo`) para ver dados na hora.
 - Confira o período no canto superior direito (15 min, 1 h, ...).
 
+## Quero usar a mesma stack em outro projeto
+
+Rode `obskitpy init` na pasta do outro projeto: ele detecta a stack rodando e pergunta se quer incluir. Sem terminal interativo:
+`obskitpy init --join` (ou `--join NOME` se houver mais de uma). Se a stack original for apagada ou mudar de pasta,
+o projeto avisa; recrie uma própria com `obskitpy init --force --standalone`.
+
 ## Quero trocar entre Kibana e dash-obskitpy
 
 `obskitpy init --force --local kibana|dash-obskitpy|ambos` e depois `obskitpy up`. Os dados no Elasticsearch

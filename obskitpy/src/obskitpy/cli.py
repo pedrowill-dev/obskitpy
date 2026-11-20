@@ -65,6 +65,14 @@ def read_env(path: Path) -> dict[str, str]:
         if "=" in line and not line.lstrip().startswith("#"):
             key, _, value = line.partition("=")
             env[key.strip()] = value.strip()
+    host = env.get("OBSKITPY_STACK_DIR")
+    if host:  # este projeto usa a stack de outro: portas e interface vêm de lá, o serviço é o seu
+        host_env_file = Path(host) / ".env"
+        if not host_env_file.exists():
+            raise CliError(f"a stack compartilhada não foi encontrada em {host}.",
+                           hint=f"Crie uma stack própria para este projeto: {cmd('init --force --standalone')}")
+        shared = read_env(host_env_file)
+        env = {**shared, **env, "OBSKITPY_STACK_SERVICE": shared["OBSKITPY_SERVICE"]}
     return env
 
 
@@ -102,7 +110,16 @@ def dash_url(env: dict[str, str]) -> str:
 
 
 def primary_url(env: dict[str, str]) -> str:
-    return dash_url(env) if uses_dash(env) else dashboard_url(env)
+    return f"{dash_url(env)}/#overview?service={env['OBSKITPY_SERVICE']}" if uses_dash(env) else dashboard_url(env)
+
+
+def is_shared(env: dict[str, str]) -> bool:
+    return bool(env.get("OBSKITPY_STACK_DIR"))
+
+
+def stack_dir(obs: Path, env: dict[str, str]) -> Path:
+    """Pasta onde a stack mora (a própria, ou a do projeto cuja stack este usa)."""
+    return Path(env["OBSKITPY_STACK_DIR"]) if is_shared(env) else obs
 
 
 def need_kibana(env: dict[str, str]) -> None:
@@ -188,15 +205,13 @@ def print_checks(checks: list[tuple[str, str, str]], only_problems: bool = False
 
 def write_env(path: Path, env: dict[str, str]) -> None:
     """Regrava o .env preservando comentários e a ordem das chaves."""
-    lines, seen = [], set()
+    lines = []
     for line in path.read_text().splitlines():
         key = line.partition("=")[0].strip()
         if "=" in line and not line.lstrip().startswith("#") and key in env:
             lines.append(f"{key}={env[key]}")
-            seen.add(key)
         else:
             lines.append(line)
-    lines += [f"{k}={v}" for k, v in env.items() if k not in seen]
     path.write_text("\n".join(lines) + "\n")
 
 
@@ -222,8 +237,9 @@ def compose(obs: Path, env: dict[str, str], args: list[str], on_line=None, _retr
         base = docker.ensure_ready()
     except docker.DockerProblem as exc:
         raise CliError(str(exc), hint=exc.hint)
-    full = base + ["--project-directory", str(obs), "-f", str(obs / "docker-compose.yml"),
-                   "-p", f"obskitpy-{env['OBSKITPY_SERVICE']}", *args]
+    where = stack_dir(obs, env)
+    project = env.get("OBSKITPY_STACK_SERVICE") or env["OBSKITPY_SERVICE"]
+    full = base + ["--project-directory", str(where), "-f", str(where / "docker-compose.yml"), "-p", f"obskitpy-{project}", *args]
     run_env = {**os.environ, "COMPOSE_PROFILES": profiles_for(env.get("OBSKITPY_LOCAL", "kibana"))}
     proc = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=run_env)
     lines: list[str] = []
@@ -240,7 +256,7 @@ def compose(obs: Path, env: dict[str, str], args: list[str], on_line=None, _retr
         docker.clean_docker_config()
         ui.hint("O credential helper do Docker não foi encontrado; usando uma configuração limpa do Docker.")
         return compose(obs, env, args, on_line, _retry=_retry - 1)
-    if _retry and "up" in args and docker.PORT_RE.search(text):  # porta ocupada
+    if _retry and "up" in args and docker.PORT_RE.search(text) and not is_shared(env):  # porta ocupada
         changed = reassign_busy_ports(obs, env, docker.busy_ports(text))
         if changed:
             for note in changed:
@@ -359,9 +375,10 @@ def summary_box(env: dict[str, str]) -> None:
 
 def run_demo(env: dict[str, str]) -> bool:
     path = Path(DEMO_FILE)
-    if not path.exists():
-        template = resources.files("obskitpy.templates").joinpath("demo.py").read_text(encoding="utf-8")
-        path.write_text(template.replace("__SERVICE__", env["OBSKITPY_SERVICE"]), encoding="utf-8")
+    template = resources.files("obskitpy.templates").joinpath("demo.py").read_text(encoding="utf-8")
+    text = template.replace("__SERVICE__", env["OBSKITPY_SERVICE"])
+    if not path.exists() or path.read_text(encoding="utf-8") != text:  # o exemplo é gerado: sempre com o serviço deste projeto
+        path.write_text(text, encoding="utf-8")
     run_env = {**os.environ, "OTEL_EXPORTER_OTLP_ENDPOINT": f"http://localhost:{env['OTLP_GRPC_PORT']}"}
     with ui.Spinner("Rodando o app de exemplo (logs, traces, métricas e alguns erros)") as sp:
         proc = subprocess.run([sys.executable, str(path)], env=run_env, capture_output=True, text=True, timeout=180)
@@ -436,10 +453,132 @@ def write_dash(obs: Path, env: dict[str, str]) -> None:
     for item in src.iterdir():
         if item.is_file():
             (dash_dir / item.name).write_bytes(item.read_bytes())
-    config = {"service": env["OBSKITPY_SERVICE"]}
+    config = {"service": env["OBSKITPY_SERVICE"], "services": [env["OBSKITPY_SERVICE"]]}
     if uses_kibana(env):
-        config["kibana"] = dashboard_url(env)
+        config["kibana"] = f"{kibana_url(env)}/app/dashboards"
     (dash_dir / "config.js").write_text("window.OBSKITPY = " + json.dumps(config, ensure_ascii=False) + ";\n", encoding="utf-8")
+
+
+def registered_services(host_dir: Path) -> list[str]:
+    cfg = host_dir / "dash" / "config.js"
+    try:
+        text = cfg.read_text(encoding="utf-8")
+        data = json.loads(text[text.index("=") + 1:].strip().rstrip(";"))
+        services = [data["service"]] if data.get("service") else []
+        return services + [x for x in data.get("services", []) if x not in services]
+    except (OSError, ValueError):
+        return []
+
+
+def register_service(host_dir: Path, service: str) -> None:
+    """Inclui o projeto na lista do seletor do dash da stack (aparece lá mesmo antes de ter dados)."""
+    cfg = host_dir / "dash" / "config.js"
+    if not cfg.exists():
+        return
+    text = cfg.read_text(encoding="utf-8")
+    data = json.loads(text[text.index("=") + 1:].strip().rstrip(";"))
+    services = data.setdefault("services", [data["service"]] if data.get("service") else [])
+    if data.get("service") and data["service"] not in services:
+        services.insert(0, data["service"])
+    if service not in services:
+        services.append(service)
+    cfg.write_text("window.OBSKITPY = " + json.dumps(data, ensure_ascii=False) + ";\n", encoding="utf-8")
+
+
+def find_running_stacks(exclude: Path | None = None) -> list[dict]:
+    """Stacks do obskitpy já rodando nesta máquina (containers do Docker Compose `obskitpy-*`)."""
+    fmt = '{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.project.working_dir"}}|{{.Label "com.docker.compose.service"}}'
+    r = docker.run(["docker", "ps", "--filter", "label=com.docker.compose.project", "--format", fmt])
+    if not (r and r.returncode == 0) and docker.use_colima_socket():
+        r = docker.run(["docker", "ps", "--filter", "label=com.docker.compose.project", "--format", fmt])
+    if not (r and r.returncode == 0):
+        return []
+    projects: dict[str, Path] = {}
+    for line in r.stdout.splitlines():
+        proj, wdir, svc = (line.split("|") + ["", "", ""])[:3]
+        if proj.startswith("obskitpy-") and svc == "elasticsearch" and wdir:
+            projects[proj] = Path(wdir)
+    found = []
+    for proj, wdir in projects.items():
+        if exclude and wdir.resolve() == exclude.resolve():
+            continue
+        try:
+            found.append({"project": proj, "dir": wdir, "env": read_env(wdir / ".env")})
+        except (CliError, OSError):
+            continue
+    return found
+
+
+def stack_label(stack: dict) -> str:
+    e = stack["env"]
+    ui_name = {"kibana": "Kibana", "dash-obskitpy": "dash-obskitpy", "ambos": "dash-obskitpy + Kibana"}.get(e.get("OBSKITPY_LOCAL", "kibana"), "Kibana")
+    return f"'{e['OBSKITPY_SERVICE']}' ({ui_name}, Elasticsearch :{e['ES_PORT']})"
+
+
+def pick_stack(args, service: str, interactive: bool, obs: Path) -> dict | None:
+    """Há uma stack rodando? Pergunta se esta automação deve entrar nela (mesmo dashboard, outro projeto)."""
+    if getattr(args, "standalone", False):
+        return None
+    stacks = find_running_stacks(exclude=obs.resolve())
+    wanted = getattr(args, "join", None)
+    if wanted:
+        match = [s for s in stacks if wanted == "auto" or wanted in (s["env"]["OBSKITPY_SERVICE"], s["project"])]
+        if not match:
+            raise CliError("não encontrei uma stack do obskitpy rodando" + ("" if wanted == "auto" else f" com o nome {wanted!r}") + ".",
+                           hint=f"Suba a outra stack (`{cmd('up')}` na pasta dela) ou use `{cmd('init --standalone')}` para criar uma nova.")
+        return match[0]
+    if not stacks or not interactive:
+        return None
+    ui.out(f"  {ui.paint('Encontrei uma stack do obskitpy já rodando:', 'gray')}")
+    for st in stacks:
+        ui.out(f"   {ui.paint('•', 'teal')} {stack_label(st)}  {ui.paint(str(st['dir']), 'gray')}")
+    ui.out()
+    options = [(str(i), f"Incluir '{service}' na stack {stack_label(st)}",
+                "mesmos containers e mesmo dashboard; no dash você escolhe qual projeto ver") for i, st in enumerate(stacks)]
+    options.append(("new", "Criar uma stack separada", "novos containers, novas portas e outro dashboard"))
+    pick = ui.choose("Quer incluir essa automação nela?", options, default=0)
+    return None if pick == "new" else stacks[int(pick)]
+
+
+def init_joined(args, obs: Path, service: str, host: dict, interactive: bool) -> None:
+    """Cria só o necessário para esta automação usar a stack que já está rodando."""
+    host_dir, host_env = host["dir"], host["env"]
+    taken = set(registered_services(host_dir)) | {host_env["OBSKITPY_SERVICE"]}
+    while service in taken:
+        if not interactive:
+            raise CliError(f"já existe um projeto chamado {service!r} nessa stack.", hint="Escolha outro com --service NOME.")
+        ui.warn(f"Já existe um projeto chamado '{service}' nessa stack.")
+        service = ui.ask("Nome do serviço", f"{service}-2")
+    ui.heading("Arquivos")
+    with ui.Spinner(f"Criando {obs}/ (sem containers novos)") as sp:
+        obs.mkdir(parents=True, exist_ok=True)
+        header = [f"# Gerado pelo obskitpy init. Este projeto usa a stack compartilhada de '{host_env['OBSKITPY_SERVICE']}'."]
+        (obs / ".env").write_text("\n".join(header + [f"OBSKITPY_SERVICE={service}", f"OBSKITPY_STACK_DIR={host_dir}"]) + "\n")
+        env = read_env(obs / ".env")
+        created = [".env"]
+        if uses_kibana(env):
+            (obs / "dashboard.ndjson").write_text(dashboard.to_ndjson(dashboard.build(service)), encoding="utf-8")
+            created.append("dashboard.ndjson")
+        if uses_dash(env):
+            register_service(host_dir, service)
+        sp.ok(f"Criado {obs}/ para o serviço {ui.paint(service, 'teal', 'bold')}")
+    ui.hint(" · ".join(created))
+    ui.ok(f"Usando a stack {stack_label(host)}")
+    if uses_kibana(env):
+        try:
+            apply_dashboard(obs, env)
+        except (kibana.KibanaError, CliError) as exc:
+            ui.warn(f"Não consegui criar o dashboard no Kibana agora ({exc}). Rode `{cmd('up')}` depois.")
+    if args.demo or (interactive and ui.confirm("Gerar e rodar um app de exemplo para já ver dados desse projeto?", default=True)):
+        ui.heading("Exemplo")
+        run_demo(env)
+    ui.out()
+    summary_box(env)
+    if interactive and ui.confirm("Abrir o dashboard no navegador?", default=True):
+        webbrowser.open(primary_url(env))
+    ui.out()
+    ui.box("Próximos passos", [f"{ui.paint('1.', 'teal', 'bold')} Instrumente o seu código:", ""] + ["   " + l for l in code_snippet(service, env["OTLP_GRPC_PORT"])], accent="amber")
+    ui.out(f"\n  {ui.paint('No dash, escolha o projeto', 'gray')} {ui.paint(service, 'bold')} {ui.paint('no seletor do topo.', 'gray')}\n")
 
 
 def cmd_init(args) -> None:
@@ -479,6 +618,10 @@ def cmd_init(args) -> None:
             raise CliError(f"nome de serviço inválido: {service!r}", hint="Use letras minúsculas, números e hífen.")
         ui.warn("Use letras minúsculas, números e hífen (ex.: meu-robo).")
         service = None
+
+    host = pick_stack(args, service, interactive, obs)
+    if host:
+        return init_joined(args, obs, service, host, interactive)
 
     local = args.local or (ui.choose("Onde você quer visualizar os logs?", LOCAL_MENU, default=0) if interactive else "kibana")
     ui.out()
@@ -550,7 +693,7 @@ def cmd_up(args) -> None:
     bring_up(obs, env)
     ui.out()
     summary_box(env)
-    if uses_dash(env) and dash_outdated(obs):
+    if uses_dash(env) and dash_outdated(stack_dir(obs, env)):
         ui.hint(f"Há uma versão mais nova do dash-obskitpy neste pacote: rode `{cmd('dash update')}` (guardo a sua em .bak).")
     ui.out(f"\n  {ui.paint('Abrir no navegador:', 'gray')} {cmd('open')}   {ui.paint('· tempo real:', 'gray')} {cmd('open --realtime')}   {ui.paint('· rodar seu código:', 'gray')} {cmd('run python app.py')}\n")
 
@@ -558,6 +701,10 @@ def cmd_up(args) -> None:
 def cmd_down(args) -> None:
     obs = Path(args.dir)
     env = read_env(obs / ".env")
+    if is_shared(env):
+        ui.ok(f"Este projeto usa a stack compartilhada de {ui.paint(env['OBSKITPY_STACK_SERVICE'], 'bold')}; nada foi derrubado, porque outros projetos podem estar usando.")
+        ui.hint(f"Para derrubar a stack, rode `{cmd('down')}` na pasta dela: {env['OBSKITPY_STACK_DIR']}")
+        return
     with ui.Spinner("Derrubando a stack" + (" e apagando os dados" if args.volumes else "")) as sp:
         try:
             compose(obs, env, ["down", *(["-v"] if args.volumes else [])], on_line=sp.update)
@@ -577,7 +724,7 @@ def cmd_status(args) -> None:
         items = data if isinstance(data, list) else [data]
     except ValueError:
         items = [json.loads(l) for l in raw.splitlines() if l.startswith("{")]
-    ui.heading(f"Serviço {env['OBSKITPY_SERVICE']}")
+    ui.heading(f"Serviço {env['OBSKITPY_SERVICE']}" + (f"  (stack compartilhada de {env['OBSKITPY_STACK_SERVICE']})" if is_shared(env) else ""))
     if not items:
         ui.warn(f"Nenhum container rodando. Use `{cmd('up')}`.")
     else:
@@ -603,14 +750,14 @@ def cmd_open(args) -> None:
         if not uses_dash(env):
             raise CliError("o modo Realtime é do dash-obskitpy, e este projeto usa só o Kibana.",
                            hint=f"Recrie com `{cmd('init --force --local ambos')}` para ter os dois.")
-        url = dash_url(env) + "/#logs?realtime"
+        url = f"{dash_url(env)}/#logs?realtime&service={env['OBSKITPY_SERVICE']}"
     elif args.ui == "kibana":
         need_kibana(env)
         url = dashboard_url(env)
     elif args.ui == "dash-obskitpy":
         if not uses_dash(env):
             raise CliError("este projeto não usa o dash-obskitpy.", hint=f"Recrie com `{cmd('init --force --local ambos')}`.")
-        url = dash_url(env)
+        url = primary_url(env)
     else:
         url = primary_url(env)
     ui.ok(f"Abrindo {ui.link(url)}")
@@ -687,6 +834,7 @@ def cmd_dash_update(args) -> None:
     env = read_env(obs / ".env")
     if not uses_dash(env):
         raise CliError("este projeto não usa o dash-obskitpy.", hint=f"Recrie com `{cmd('init --force --local dash-obskitpy')}`.")
+    obs = stack_dir(obs, env)  # na stack compartilhada, o dash mora na pasta do projeto que a criou
     changed = dash_outdated(obs)
     if not changed:
         ui.ok("O dash-obskitpy já está na versão do pacote instalado.")
@@ -784,6 +932,8 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--service", help="nome do serviço (padrão: nome da pasta atual)")
     init.add_argument("--local", choices=LOCAL_CHOICES, help="onde visualizar: kibana, dash-obskitpy ou ambos (padrão: pergunta; sem terminal, kibana)")
     init.add_argument("--force", action="store_true", help="recria uma instalação existente")
+    init.add_argument("--join", nargs="?", const="auto", metavar="STACK", help="usa uma stack do obskitpy já rodando (nome do serviço dela; sem valor, a primeira encontrada)")
+    init.add_argument("--standalone", action="store_true", help="não procurar stacks rodando: cria uma stack própria")
     init.add_argument("-y", "--yes", action="store_true", help="não perguntar nada (usa os padrões)")
     init.add_argument("--up", action="store_true", help="sobe a stack ao terminar")
     init.add_argument("--demo", action="store_true", help="com --up: gera e roda um app de exemplo")

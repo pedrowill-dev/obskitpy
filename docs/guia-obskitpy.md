@@ -34,6 +34,7 @@ algo pede a sua confirmação.
 | `docker-credential-desktop` não encontrado | Repete com uma configuração do Docker sem o credential helper. |
 | Porta ocupada ao subir | Escolhe a próxima livre, grava no `.env` e tenta de novo (uma porta por vez, se preciso). |
 | Comando com atalho ou erro de digitação (`start`, `ps`, `upp`) | Entende (`up`, `status`...) e avisa. Para os outros, sugere: "Você quis dizer…?". |
+| Já existe uma stack do obskitpy rodando | O `init` pergunta se esta automação deve **entrar nela** (mesmo dashboard; no dash você escolhe o projeto). |
 | Pasta sem `observability/` | Oferece rodar o assistente `init` na hora. |
 | `otel-collector-config.yaml` de uma versão antiga | No `up`, atualiza (guarda `.bak`) e recria o Collector para enviar dados a cada 1 s. |
 | Arquivos do dash de uma versão antiga | O `up` avisa; `obskitpy dash update` atualiza. |
@@ -61,6 +62,8 @@ Com terminal interativo, faz perguntas (e usa os padrões onde você apertar Ent
 | `--dash-port` | 8600 | Porta local do dash-obskitpy (se usar). |
 | `--otlp-grpc-port` | 4317 | Porta local do Collector (gRPC) — a que a biblioteca usa. |
 | `--otlp-http-port` | 4318 | Porta local do Collector (HTTP). |
+| `--join [STACK]` | — | Usa uma **stack do obskitpy já rodando** (pelo nome do serviço dela; sem valor, a primeira encontrada) em vez de criar outra. |
+| `--standalone` | — | Não procura stacks rodando: cria uma stack própria. |
 | `--force` | — | Recria uma instalação existente (a anterior fica em `observability.bak/`). |
 
 Portas que você não informar e que estiverem ocupadas são trocadas automaticamente pela próxima livre

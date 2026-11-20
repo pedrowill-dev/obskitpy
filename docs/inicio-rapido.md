@@ -31,17 +31,17 @@ obskitpy init
 
 O assistente conversa com você, checa o ambiente e faz o resto:
 
-![Assistente do obskitpy init no terminal](images/cli-init.png)
 
 1. **Nome do serviço** (padrão: o nome da pasta).
-2. **Onde você quer visualizar os logs?**
+2. **Já tem uma stack rodando?** Ele procura as stacks do obskitpy abertas na máquina e pergunta se você quer **incluir esta automação nela** (mesmos containers e mesmo dashboard; no dash você escolhe o projeto no seletor do topo) ou **criar uma stack separada**. Incluindo, a interface, as portas e a subida da stack já vêm da stack existente.
+3. **Onde você quer visualizar os logs?**
    - **Kibana**: completo, para explorar a fundo e montar painéis próprios.
    - **dash-obskitpy**: dashboard próprio, leve e direto ao ponto, sem Kibana (sobe mais rápido).
    - **Os dois**: dash-obskitpy no dia a dia e Kibana para investigar.
-3. **Portas**: se alguma estiver ocupada, ele escolhe a próxima livre e avisa.
-4. **Subir a stack agora?** Mostra o progresso e espera tudo ficar saudável.
-5. **Rodar um app de exemplo?** Gera `obskitpy_demo.py` e o executa, para o dashboard já nascer com dados.
-6. **Abrir no navegador?**
+4. **Portas**: se alguma estiver ocupada, ele escolhe a próxima livre e avisa.
+5. **Subir a stack agora?** Mostra o progresso e espera tudo ficar saudável.
+6. **Rodar um app de exemplo?** Gera `obskitpy_demo.py` e o executa, para o dashboard já nascer com dados.
+7. **Abrir no navegador?**
 
 Prefere sem perguntas (scripts, CI)? Escolha tudo por flags:
 

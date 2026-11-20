@@ -12,6 +12,7 @@ from obskitpy.cli import main
 def no_docker(monkeypatch):
     """Os testes não dependem do Docker da máquina."""
     monkeypatch.setattr(cli, "doctor_checks", lambda ports=None: [("Docker", "ok", "fake")])
+    monkeypatch.setattr(cli, "find_running_stacks", lambda exclude=None: [])  # não depende de stacks reais da máquina
 
 
 def test_dashboard_is_scoped_and_consistent():
@@ -160,7 +161,7 @@ def test_init_local_both(tmp_path):
     main(["init", "--dir", str(obs), "--service", "pedidos", "--local", "ambos", "--yes"])
     assert (obs / "dashboard.ndjson").exists() and (obs / "dash" / "app.js").exists()
     assert "COMPOSE_PROFILES=kibana,dash" in (obs / ".env").read_text()
-    assert "pedidos-observability" in (obs / "dash" / "config.js").read_text()  # link para o Kibana
+    assert "/app/dashboards" in (obs / "dash" / "config.js").read_text()  # link para o Kibana
 
 
 def test_kibana_commands_refuse_dash_only(tmp_path):
@@ -344,7 +345,7 @@ def test_open_realtime_url(tmp_path, monkeypatch, capsys):
     opened = []
     monkeypatch.setattr(cli.webbrowser, "open", opened.append)
     main(["open", "--realtime", "--dir", str(obs)])
-    assert opened and opened[0].endswith("/#logs?realtime")
+    assert opened and "/#logs?realtime" in opened[0] and "service=app" in opened[0]
 
 
 def test_dash_update_replaces_outdated_files_keeping_backup(tmp_path):
@@ -384,3 +385,120 @@ def test_refresh_collector_config_updates_old_file(tmp_path, monkeypatch):
     assert (obs / "otel-collector-config.yaml.bak").read_text() == "# antigo\n"
     assert "flush:" in cfg.read_text() and recreated == [["up", "-d", "--force-recreate", "otel-collector"]]
     assert cli.refresh_collector_config(obs, env) is False  # já atualizado
+
+
+# ---------- stack compartilhada ----------
+
+def fake_host(tmp_path, monkeypatch, local="dash-obskitpy", service="news-gov"):
+    host_obs = tmp_path / "host" / "observability"
+    main(["init", "--dir", str(host_obs), "--service", service, "--local", local, "--yes"])
+    host = {"project": f"obskitpy-{service}", "dir": host_obs.resolve(), "env": cli.read_env(host_obs / ".env")}
+    monkeypatch.setattr(cli, "find_running_stacks", lambda exclude=None: [host])
+    return host
+
+
+def test_find_running_stacks_reads_compose_labels(tmp_path, monkeypatch):
+    host = tmp_path / "observability"
+    main(["init", "--dir", str(host), "--service", "alfa", "--yes"])
+    out = (f"obskitpy-alfa|{host.resolve()}|elasticsearch\nobskitpy-alfa|{host.resolve()}|kibana\n"
+           "outra|/x|elasticsearch\nobskitpy-sem-es|/y|kibana\n")
+    monkeypatch.undo()
+    monkeypatch.setattr(cli.docker, "run", lambda cmd, timeout=20: type("R", (), {"returncode": 0, "stdout": out})())
+    found = cli.find_running_stacks()
+    assert [f["project"] for f in found] == ["obskitpy-alfa"] and found[0]["env"]["OBSKITPY_SERVICE"] == "alfa"
+    assert cli.find_running_stacks(exclude=host) == []
+
+
+def test_init_join_creates_only_env_and_registers_service(tmp_path, monkeypatch):
+    host = fake_host(tmp_path, monkeypatch)
+    mine = tmp_path / "b" / "observability"
+    main(["init", "--dir", str(mine), "--service", "teste-b", "--join", "--yes"])
+    names = {p.name for p in mine.iterdir()}
+    assert names == {".env"}  # dash-obskitpy: sem compose, sem containers novos
+    env = cli.read_env(mine / ".env")
+    assert env["OBSKITPY_SERVICE"] == "teste-b" and env["OBSKITPY_STACK_SERVICE"] == "news-gov"
+    assert env["ES_PORT"] == host["env"]["ES_PORT"] and cli.is_shared(env)
+    assert cli.registered_services(host["dir"]) == ["news-gov", "teste-b"]
+    assert "service=teste-b" in cli.primary_url(env)
+
+
+def test_init_join_with_kibana_gets_its_own_dashboard(tmp_path, monkeypatch):
+    fake_host(tmp_path, monkeypatch, local="kibana")
+    monkeypatch.setattr(cli, "apply_dashboard", lambda *a, **k: 12)
+    mine = tmp_path / "b" / "observability"
+    main(["init", "--dir", str(mine), "--service", "teste-b", "--join", "--yes"])
+    assert "teste-b-observability" in (mine / "dashboard.ndjson").read_text()
+
+
+def test_join_rejects_duplicate_name_and_missing_stack(tmp_path, monkeypatch):
+    fake_host(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit):
+        main(["init", "--dir", str(tmp_path / "x" / "observability"), "--service", "news-gov", "--join", "--yes"])
+    monkeypatch.setattr(cli, "find_running_stacks", lambda exclude=None: [])
+    with pytest.raises(SystemExit):
+        main(["init", "--dir", str(tmp_path / "y" / "observability"), "--service", "novo", "--join", "--yes"])
+
+
+def test_interactive_init_offers_to_join(tmp_path, monkeypatch, capsys):
+    fake_host(tmp_path, monkeypatch)
+    monkeypatch.setattr(ui, "interactive", lambda: True)
+    monkeypatch.setattr(cli, "run_demo", lambda env: True)
+    answers = iter(["teste-b", "1", "n", "n"])  # nome; incluir na stack; exemplo não; abrir não
+    monkeypatch.setattr("builtins.input", lambda *_: next(answers))
+    mine = tmp_path / "b" / "observability"
+    main(["init", "--dir", str(mine)])
+    out = capsys.readouterr().out
+    assert "Encontrei uma stack" in out and "Incluir 'teste-b'" in out and "seletor" in out
+    assert cli.is_shared(cli.read_env(mine / ".env"))
+
+
+def test_standalone_flag_skips_detection(tmp_path, monkeypatch):
+    fake_host(tmp_path, monkeypatch)
+    mine = tmp_path / "b" / "observability"
+    main(["init", "--dir", str(mine), "--service", "teste-b", "--standalone", "--yes"])
+    assert (mine / "docker-compose.yml").exists() and not cli.is_shared(cli.read_env(mine / ".env"))
+
+
+def test_down_in_shared_project_does_not_touch_the_stack(tmp_path, monkeypatch, capsys):
+    fake_host(tmp_path, monkeypatch)
+    mine = tmp_path / "b" / "observability"
+    main(["init", "--dir", str(mine), "--service", "teste-b", "--join", "--yes"])
+    called = []
+    monkeypatch.setattr(cli, "compose", lambda *a, **k: called.append(a))
+    main(["down", "--dir", str(mine)])
+    assert not called and "compartilhada" in capsys.readouterr().out
+
+
+def test_compose_in_shared_mode_uses_host_dir_and_project(tmp_path, monkeypatch):
+    host = fake_host(tmp_path, monkeypatch)
+    mine = tmp_path / "b" / "observability"
+    main(["init", "--dir", str(mine), "--service", "teste-b", "--join", "--yes"])
+    env = cli.read_env(mine / ".env")
+    seen = {}
+
+    class P:
+        stdout = iter([])
+        def wait(self): return 0
+    monkeypatch.setattr(cli.docker, "ensure_ready", lambda: ["docker", "compose"])
+    monkeypatch.setattr(cli.subprocess, "Popen", lambda full, **k: seen.setdefault("cmd", full) and P())
+    cli.compose(mine, env, ["ps"])
+    assert str(host["dir"]) in seen["cmd"] and "obskitpy-news-gov" in seen["cmd"]
+
+
+def test_demo_is_regenerated_for_the_current_service(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "wait_data", lambda env, timeout=0: True)
+    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})())
+    env = {"OBSKITPY_SERVICE": "um", "OTLP_GRPC_PORT": "1", "ES_PORT": "2"}
+    cli.run_demo(env)
+    cli.run_demo({**env, "OBSKITPY_SERVICE": "dois"})
+    assert 'setup("dois")' in (tmp_path / "obskitpy_demo.py").read_text()
+
+
+def test_dash_has_project_selector():
+    from importlib import resources
+    t = resources.files("obskitpy.templates")
+    assert 'id="svc"' in t.joinpath("dash/index.html").read_text() and "<select" in t.joinpath("dash/index.html").read_text()
+    js = t.joinpath("dash/app.js").read_text()
+    for needle in ("state.service", "loadServices", "dash.service", "service="):
+        assert needle in js

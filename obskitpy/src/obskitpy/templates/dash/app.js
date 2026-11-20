@@ -14,7 +14,7 @@
   const loadSpan = (key, fallback) => { try { const v = JSON.parse(localStorage.getItem(key)); return v && v.n > 0 && UNIT[v.u] ? v : fallback; } catch { return fallback; } };
   const SEV_COLORS = { ERROR: "#ff7b7b", FATAL: "#ff7b7b", WARN: "#ffb81c", INFO: "#19d3b6", DEBUG: "#6ea8ff" };
   const PALETTE = ["#19d3b6", "#ffb81c", "#6ea8ff", "#c2a8ff", "#ff7b7b", "#5bd68a"];
-  const state = { range: loadSpan("dash.range", { n: 1, u: "h" }), refresh: loadSpan("dash.refresh", { n: 10, u: "s" }), auto: localStorage.getItem("dash.auto") !== "0", rt: false, saved: null, seen: null, lastHtml: "", tab: "overview", sev: "", q: "", errType: "", trace: null, open: null };
+  const state = { service: localStorage.getItem("dash.service") || CFG.service, services: [], range: loadSpan("dash.range", { n: 1, u: "h" }), refresh: loadSpan("dash.refresh", { n: 10, u: "s" }), auto: localStorage.getItem("dash.auto") !== "0", rt: false, saved: null, seen: null, lastHtml: "", tab: "overview", sev: "", q: "", errType: "", trace: null, open: null };
 
   /* ---------- acesso ao Elasticsearch ---------- */
   async function es(index, endpoint, body) {
@@ -23,9 +23,9 @@
     if (!r.ok) throw new Error(`Elasticsearch respondeu ${r.status}`);
     return r.json();
   }
-  const svcFilter = { term: { "resource.attributes.service.name": CFG.service } };
+  const svcFilter = () => ({ term: { "resource.attributes.service.name": state.service } });
   const timeFilter = () => ({ range: { "@timestamp": { gte: `now-${dateMath(state.range)}` } } });
-  const base = (...extra) => ({ bool: { filter: [svcFilter, timeFilter(), ...extra] } });
+  const base = (...extra) => ({ bool: { filter: [svcFilter(), timeFilter(), ...extra] } });
   const ROOT = { bool: { must: [{ exists: { field: "name" } }], must_not: [{ exists: { field: "parent_span_id" } }] } };
 
   /* ---------- formatação ---------- */
@@ -76,7 +76,7 @@
   const bucketsFrom = (agg, keyOf) => agg.buckets.map((b) => ({ t: b.key_as_string || b.key, v: Object.fromEntries(b.k.buckets.map((x) => [x.key, x.doc_count])) }));
 
   /* ---------- telas ---------- */
-  const emptyState = () => `<div class="empty"><h3>Ainda sem dados para <code>${esc(CFG.service)}</code></h3><p>Rode a sua aplicação (com <code>obskitpy.setup("${esc(CFG.service)}")</code>) ou gere um exemplo com <code>python obskitpy_demo.py</code>.<br>Os dados aparecem aqui em segundos.</p></div>`;
+  const emptyState = () => `<div class="empty"><h3>Ainda sem dados para <code>${esc(state.service)}</code></h3><p>Rode a sua aplicação (com <code>obskitpy.setup("${esc(state.service)}")</code>) ou gere um exemplo com <code>python obskitpy_demo.py</code>.<br>Os dados aparecem aqui em segundos.</p></div>`;
 
   async function overview() {
     const [logs, traces] = await Promise.all([
@@ -211,6 +211,8 @@
     const [path, qs] = location.hash.slice(1).split("?");
     const [t, id] = path.split("/");
     state.tab = TABS[t] ? t : "overview"; if (id) state.trace = id;
+    const wanted = qs && (qs.match(/(?:^|&)service=([^&]+)/) || [])[1];
+    if (wanted && decodeURIComponent(wanted) !== state.service) selectService(decodeURIComponent(wanted), false);
     if (qs && /(^|&)realtime(=1|=true)?(&|$)/.test(qs)) setRealtime(true);
     render(false);
   }
@@ -278,7 +280,34 @@
     if (e.key === "Escape") closePops();
   });
 
-  $("#svc").textContent = CFG.service;
+  /* ---------- projetos (serviços) ---------- */
+  function paintServices() {
+    const sel = $("#svc"), list = [...new Set([state.service, ...state.services])].sort();
+    sel.innerHTML = list.map((s) => `<option value="${esc(s)}" ${s === state.service ? "selected" : ""}>${esc(s)}</option>`).join("");
+    sel.title = list.length > 1 ? "Escolha o projeto (automação) que você quer ver" : "Projeto (automação) que você está vendo";
+    document.title = `dash-obskitpy · ${state.service}`;
+  }
+  function selectService(name, doRender = true) {
+    state.service = name; localStorage.setItem("dash.service", name);
+    Object.assign(state, { seen: null, open: null, trace: null, q: "", errType: "", sev: "", lastHtml: "" });
+    paintServices();
+    if (doRender) render(false);
+  }
+  async function loadServices() {
+    const found = new Set([CFG.service, ...(CFG.services || [])]);
+    for (const idx of [IDX.logs, IDX.traces, IDX.metrics]) {
+      try {
+        const r = await es(idx, "_search", { size: 0, aggs: { s: { terms: { field: "resource.attributes.service.name", size: 100 } } } });
+        (r?.aggregations.s.buckets || []).forEach((b) => found.add(b.key));
+      } catch { /* a stack pode ainda não ter dados */ }
+    }
+    state.services = [...found].sort();
+    paintServices();
+  }
+  $("#svc").addEventListener("change", (e) => selectService(e.target.value));
+  $("#svc").addEventListener("mousedown", loadServices); // atualiza a lista ao abrir
+  setInterval(loadServices, 30000);
+  paintServices(); loadServices();
   if (CFG.kibana) { const k = $("#kibana"); k.href = CFG.kibana; k.hidden = false; }
   $("#refresh").addEventListener("click", () => render());
   addEventListener("hashchange", fromHash);
