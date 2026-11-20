@@ -952,7 +952,12 @@ def cmd_portal_enable(args) -> None:
             if entry not in lines:
                 lines.append(entry)
         gitignore.write_text("\n".join(lines) + "\n")
-        port = args.portal_port or (int(env["PORTAL_PORT"]) if env.get("PORTAL_PORT") else next_free_port(DEFAULT_PORTS["PORTAL_PORT"]))
+        if args.portal_port:
+            port = args.portal_port
+        elif env.get("OBSKITPY_PORTAL") == "1" and env.get("PORTAL_PORT"):  # já ativado: mantém a porta da stack
+            port = int(env["PORTAL_PORT"])
+        else:
+            port = next_free_port(int(env.get("PORTAL_PORT") or DEFAULT_PORTS["PORTAL_PORT"]))
         set_env_keys(obs / ".env", {"OBSKITPY_PORTAL": "1", "PORTAL_PORT": str(port), "COMPOSE_PROFILES": compose_profiles({**env, "OBSKITPY_PORTAL": "1"})})
         sp.ok("Arquivos e segredos prontos" + ("" if created else " (segredos existentes mantidos)"))
     env = read_env(obs / ".env")

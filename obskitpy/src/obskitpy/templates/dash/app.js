@@ -228,9 +228,11 @@
   }
 
   function formHtml() {
-    const k = portal.kinds.find((x) => x.kind === portal.kind) || portal.kinds[0];
+    const manual = portal.kinds.filter((x) => !x.oauth);
+    if (!manual.some((x) => x.kind === portal.kind)) portal.kind = manual[0].kind;
+    const k = manual.find((x) => x.kind === portal.kind);
     return `<div class="card pform"><h2>Nova integração</h2><form id="newint">
-      <label>Provedor<select id="kind">${portal.kinds.map((x) => `<option value="${x.kind}" ${x.kind === k.kind ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select></label>
+      <label>Provedor<select id="kind">${manual.map((x) => `<option value="${x.kind}" ${x.kind === k.kind ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select></label>
       <p class="mono hint">${esc(k.help)}</p>
       <label>Nome da conexão<input id="intname" required placeholder="Ex.: Bot de operações"></label>
       ${k.config_fields.map((f) => fieldHtml(f, false)).join("")}${k.secret_fields.map((f) => fieldHtml(f, true)).join("")}
@@ -247,6 +249,36 @@
       ${c.last_error ? `<p class="perr">${esc(c.last_error)}</p>` : ""}${test}</div>`;
   };
 
+  const SLACK_ERR = { access_denied: "Você cancelou a conexão com o Slack.", invalid_code: "O código do Slack expirou: clique em Conectar de novo.",
+    bad_client_secret: "O Client Secret está incorreto. Confira em Basic Information → App Credentials.", invalid_client_id: "O Client ID está incorreto.",
+    redirect_uri_mismatch: "A URL de retorno do app não confere. Crie o app pelo botão do manifesto (ele já traz a URL certa).",
+    "sessão inválida": "Sua sessão expirou. Entre de novo e tente conectar." };
+  const SLACK_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M9.6 3a2 2 0 1 0 0 4h2V5a2 2 0 0 0-2-2Zm0 5.3H4.4a2 2 0 1 0 0 4h5.2a2 2 0 1 0 0-4Zm10 2a2 2 0 1 0-4 0v2h2a2 2 0 0 0 2-2Zm-5.3 0V5a2 2 0 1 0-4 0v5.3a2 2 0 1 0 4 0ZM14.4 21a2 2 0 1 0 0-4h-2v2a2 2 0 0 0 2 2Zm0-5.3h5.2a2 2 0 1 0 0-4h-5.2a2 2 0 1 0 0 4ZM4.4 13.7a2 2 0 1 0 4 0v-2h-2a2 2 0 0 0-2 2Zm5.3 0V19a2 2 0 1 0 4 0v-5.3a2 2 0 1 0-4 0Z"/></svg>';
+
+  const slackSetupHtml = (st) => `<div class="card pform slacksetup"><h2>Conectar com Slack — configuração de uma vez só</h2>
+    <p class="mono hint">O Slack exige que cada instalação tenha o seu próprio app (é rápido, e você faz isso uma única vez). Depois, conectar é só um clique.</p>
+    <ol class="steps2"><li><b>Crie o app do Slack.</b> O link abre o Slack com o nome, as permissões e a URL de retorno já preenchidos; é só confirmar em <i>Create</i>.<br>
+      <a class="btn small" href="${esc(st.manifest_url)}" target="_blank" rel="noopener">Criar o app no Slack ↗</a></li>
+      <li><b>Copie as credenciais</b> da página do app (<i>Basic Information → App Credentials</i>) e cole aqui:
+        <form id="slackapp" class="grid-form"><label>Client ID<input id="sclientid" required autocomplete="off" placeholder="1234567890.1234567890" value="${esc(st.client_id)}"></label>
+        <label>Client Secret<input id="sclientsecret" type="password" required autocomplete="off" placeholder="cole o Client Secret"></label>
+        <div class="row"><button class="btn" type="submit">Salvar e conectar com Slack</button><button class="btn ghost" type="button" data-act="slack-cancel">Cancelar</button></div></form></li></ol>
+    <p class="mono hint">${st.mode === "relay" ? `O Slack só aceita retorno por HTTPS, então a volta passa por <code>${esc(st.redirect_uri)}</code>, uma página estática que apenas devolve você para este endereço local (<code>${esc(location.origin)}</code>). Nada é guardado lá.` : `A volta do Slack usa o endereço do portal: <code>${esc(st.redirect_uri)}</code>.`}</p></div>`;
+
+  const slackCard = (c, dests) => {
+    const [label, cls] = STATUS[c.status] || STATUS.untested;
+    const mine = dests.filter((d) => d.connection_id === c.id);
+    const admin = canAdmin();
+    return `<div class="pcard slackcard" data-slack="${c.id}"><div class="ptop"><span class="picon slack">#</span><div><b>${esc(c.name)}</b><small>Slack · conectado${c.config.team_name ? ` a ${esc(c.config.team_name)}` : ""}</small></div><span class="pstat ${cls}">${label}</span></div>
+      <div class="slackform"><label>Nome do robô<input data-slackcfg="bot_name" value="${esc(c.config.bot_name || "obskitpy")}" maxlength="80" ${admin ? "" : "disabled"}></label>
+      <label>Ícone (emoji)<input data-slackcfg="icon_emoji" value="${esc(c.config.icon_emoji || "")}" placeholder=":eyes:" ${admin ? "" : "disabled"}></label>
+      <label class="wide">Canal<select data-chan-for="${c.id}" ${admin ? "" : "disabled"}><option value="">${mine.length ? "Carregando canais…" : "Carregando canais…"}</option></select></label></div>
+      ${c.last_error ? `<p class="perr">${esc(c.last_error)}</p>` : ""}
+      <p class="pmeta">O robô aparece no Slack com o nome e o ícone acima${c.last_tested_at ? ` · testado em ${fmtDateTime(c.last_tested_at)}` : ""}</p>
+      <div class="row">${admin ? `<button class="btn small" data-act="slack-save" data-id="${c.id}">Salvar</button>` : ""}${canTest() ? `<button class="btn small" data-act="slack-test" data-id="${c.id}">Salvar e enviar teste</button>` : ""}
+      ${admin ? `<button class="btn small ghost" data-act="slack-connect" title="Conectar de novo (troca o token)">Reconectar</button><button class="btn small ghost danger" data-act="del-int" data-id="${c.id}">Remover</button>` : ""}</div></div>`;
+  };
+
   const destForm = (ints) => canAdmin() && ints.length ? `<form id="newdest" class="inline"><select id="dconn">${ints.map((c) => `<option value="${c.id}">${esc(c.name)} (${esc(c.label)})</option>`).join("")}</select>
     <input id="dname" required placeholder="Nome do destino (ex.: Operações)"><input id="dtarget" placeholder="ID do chat / e-mail (se o provedor pedir)"><button class="btn small" type="submit">Adicionar destino</button></form>` : "";
 
@@ -254,14 +286,25 @@
     try { await papi("health"); } catch { return notEnabled(); }
     try { portal.user = await papi("auth/me"); } catch (e) { portal.user = null; if (e.status !== 401) return notEnabled(); }
     if (!portal.user) return loginView();
-    const [kinds, ints, dests, contacts, groups] = await Promise.all([papi("integrations/kinds"), papi("integrations"), papi("destinations"), papi("contacts"), papi("contact-groups")]);
+    const q = new URLSearchParams(location.hash.split("?")[1] || "");
+    if (q.has("connected") || q.has("slack_error")) {
+      if (q.has("connected")) toast("Slack conectado! Agora escolha o canal e o nome do robô.");
+      else toast(SLACK_ERR[q.get("slack_error")] || `O Slack respondeu: ${q.get("slack_error")}`, true);
+      history.replaceState(null, "", "#integrations");
+    }
+    const [kinds, ints, dests, contacts, groups, slackSt] = await Promise.all([papi("integrations/kinds"), papi("integrations"), papi("destinations"), papi("contacts"), papi("contact-groups"), papi("oauth/slack/status")]);
+    portal.slack = slackSt; portal.ints = ints; portal.dests = dests;
     const audit = canAdmin() ? await papi("audit?limit=30") : [];
     portal.kinds = kinds;
     const rows = (list, cols) => list.length ? `<table><thead><tr>${cols.map((c) => `<th>${c[0]}</th>`).join("")}</tr></thead><tbody>${list.map((x) => `<tr>${cols.map((c) => `<td>${c[1](x)}</td>`).join("")}</tr>`).join("")}</tbody></table>` : '<p class="mono hint">Nada cadastrado ainda.</p>';
     return `<div class="pbar"><span>Logado como <b>${esc(portal.user.email)}</b> <span class="sev INFO">${esc(portal.user.role)}</span></span><button class="btn small ghost" data-act="logout">Sair</button></div>
-      <div class="psec"><div class="phead"><h2>Integrações</h2>${canAdmin() ? '<button class="btn small" data-act="new-form">+ Nova integração</button>' : ""}</div>
+      <div class="psec"><div class="phead"><h2>Conectar com um clique</h2></div>
+        <div class="connect">${canAdmin() ? `<button class="btn slackbtn" data-act="slack-connect">${SLACK_ICON} Conectar com Slack</button>` : '<span class="mono hint">Peça a um administrador para conectar o Slack.</span>'}
+        <span class="mono hint">Depois de conectar, você escolhe o canal e o nome do robô.${slackSt.configured ? "" : " (Na primeira vez, criamos o app do Slack com você: leva 1 minuto.)"}</span>${canAdmin() && slackSt.configured ? '<button class="btn small ghost" data-act="slack-setup">Trocar credenciais do app</button>' : ""}</div>
+        ${portal.slackSetup ? slackSetupHtml(slackSt) : ""}</div>
+      <div class="psec"><div class="phead"><h2>Integrações</h2>${canAdmin() ? '<button class="btn small" data-act="new-form">+ Nova integração (webhook, bot, e-mail)</button>' : ""}</div>
         ${portal.form ? formHtml() : ""}
-        <div class="pgrid">${ints.length ? ints.map((c) => integrationCard(c, dests)).join("") : '<div class="card"><p class="mono hint">Nenhuma integração ainda. Conecte o Telegram, o Teams, o Slack ou um e-mail para receber alertas.</p></div>'}</div></div>
+        <div class="pgrid">${ints.length ? ints.map((c) => (c.kind === "slack_app" ? slackCard(c, dests) : integrationCard(c, dests))).join("") : '<div class="card"><p class="mono hint">Nenhuma integração ainda. Conecte o Telegram, o Teams, o Slack ou um e-mail para receber alertas.</p></div>'}</div></div>
       <div class="psec card"><div class="phead"><h2>Destinos</h2></div>${destForm(ints)}
         ${rows(dests, [["Destino", (d) => esc(d.name)], ["Integração", (d) => esc(d.connection)], ["Alvo", (d) => `<code>${esc(d.target || "—")}</code>`], ["", (d) => canAdmin() ? `<button class="btn small ghost danger" data-act="del-dest" data-id="${d.id}">Remover</button>` : ""]])}</div>
       <div class="psec grid2"><div class="card"><div class="phead"><h2>Contatos</h2></div>${canAdmin() ? `<form id="newcontact" class="inline"><input id="cname" required placeholder="Nome"><input id="cemail" type="email" placeholder="E-mail (opcional)"><button class="btn small" type="submit">Adicionar</button></form>` : ""}
@@ -271,8 +314,48 @@
       ${canAdmin() ? `<div class="psec card"><div class="phead"><h2>Auditoria</h2></div>${rows(audit, [["Quando", (a) => fmtDateTime(a.at)], ["Quem", (a) => esc(a.actor)], ["Ação", (a) => `<code>${esc(a.action)}</code>`]])}</div>` : ""}`;
   }
 
+  async function slackConnect(afterSave) {
+    if (!portal.slack?.configured && !afterSave) { portal.slackSetup = true; state.lastHtml = ""; return render(false); }
+    try {
+      const r = await papi("oauth/slack/start", { method: "POST", body: { origin: location.origin } });
+      toast("Abrindo o Slack para você autorizar…");
+      location.href = r.url;
+    } catch (e) { toast(e.message, true); }
+  }
+  async function loadChannels(sel) {
+    const id = +sel.dataset.chanFor, current = (portal.dests || []).find((d) => d.connection_id === id);
+    try {
+      const chans = await papi(`integrations/${id}/slack/channels`);
+      sel.innerHTML = `<option value="">Escolha um canal…</option>` + chans.map((c) => `<option value="${esc(c.id)}" data-name="${esc(c.name)}" ${current && current.target === c.id ? "selected" : ""}>${c.private ? "🔒 " : "#"}${esc(c.name)}${c.member || c.private ? "" : " (o robô entra sozinho)"}</option>`).join("");
+    } catch (e) { sel.innerHTML = `<option value="">Não consegui listar os canais</option>`; toast(e.message, true); }
+  }
+  async function slackSave(id, thenTest, app) {
+    const card = $(`[data-slack="${id}"]`, app), btn = $(`[data-act="${thenTest ? "slack-test" : "slack-save"}"]`, card);
+    const cfg = Object.fromEntries($$("[data-slackcfg]", card).map((i) => [i.dataset.slackcfg, i.value.trim()]));
+    if (!cfg.icon_emoji) delete cfg.icon_emoji;
+    const sel = $("[data-chan-for]", card), channel = sel.value, name = sel.selectedOptions[0]?.dataset.name;
+    btn.disabled = true;
+    try {
+      if (canAdmin()) await papi(`integrations/${id}`, { method: "PUT", body: { config: cfg } });
+      let dest = (portal.dests || []).find((d) => d.connection_id === +id && d.target === channel);
+      if (channel && !dest && canAdmin()) dest = await papi("destinations", { method: "POST", body: { connection_id: +id, name: `#${name}`, target: channel } });
+      if (thenTest) {
+        if (!dest) throw new Error("Escolha um canal para enviar o teste.");
+        const r = await papi(`integrations/${id}/test`, { method: "POST", body: { destination_id: dest.id } });
+        toast(r.ok ? `Mensagem enviada para #${name}. Confira no Slack!` : r.detail, !r.ok);
+      } else toast("Configuração do Slack salva.");
+    } catch (e) { toast(e.message, true); }
+    state.lastHtml = ""; render(false);
+  }
+
   function portalWire(app) {
     const run = async (fn, okMsg) => { try { await fn(); if (okMsg) toast(okMsg); } catch (e) { if (e.status === 401) portal.user = null; toast(e.message, true); } state.lastHtml = ""; render(false); };
+    const sa = $("#slackapp", app);
+    if (sa) sa.addEventListener("submit", (e) => {
+      e.preventDefault();
+      run(async () => { await papi("oauth/slack/app", { method: "PUT", body: { client_id: $("#sclientid", sa).value, client_secret: $("#sclientsecret", sa).value } }); portal.slackSetup = false; await slackConnect(true); });
+    });
+    $$("[data-chan-for]", app).forEach((sel) => loadChannels(sel));
     const form = $("#login", app);
     if (form) form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -282,6 +365,10 @@
     $$("[data-act]", app).forEach((b) => b.addEventListener("click", () => {
       const id = b.dataset.id, act = b.dataset.act;
       if (act === "logout") return run(() => papi("auth/logout", { method: "POST" }).then(() => (portal.user = null)));
+      if (act === "slack-connect") return slackConnect();
+      if (act === "slack-setup") { portal.slackSetup = true; state.lastHtml = ""; return render(false); }
+      if (act === "slack-cancel") { portal.slackSetup = false; state.lastHtml = ""; return render(false); }
+      if (act === "slack-save" || act === "slack-test") return slackSave(id, act === "slack-test", app);
       if (act === "new-form") { portal.form = true; state.lastHtml = ""; return render(false); }
       if (act === "cancel-form") { portal.form = false; state.lastHtml = ""; return render(false); }
       if (act === "test") {

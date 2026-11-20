@@ -166,6 +166,8 @@ def main() -> None:
     OUT.mkdir()
     shutil.copytree(SRC / "assets", OUT / "assets")
     shutil.copytree(DOCS / "images", OUT / "assets" / "images")
+    if (SRC / "oauth").exists():  # páginas estáticas de retorno do OAuth (ex.: Slack)
+        shutil.copytree(SRC / "oauth", OUT / "oauth")
 
     index: list[dict] = []
     for slug in PAGES:

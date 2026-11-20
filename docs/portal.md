@@ -30,13 +30,49 @@ e o usuário administrador. A primeira vez baixa as imagens e instala o portal (
 `obskitpy portal password` gera uma nova senha para o administrador. Os dados de integrações ficam no volume
 `pgdata` da stack; `obskitpy down -v` apaga tudo, inclusive o banco.
 
-## Como conectar cada provedor
+## Conectar com Slack em um clique
+
+Na aba **Integrações**, o botão **Conectar com Slack** abre o Slack, você autoriza, e volta para o dash. Depois é só
+escolher o **canal** e o **nome do robô** (e o ícone) e usar **Salvar e enviar teste**.
+
+![Conectar com Slack no dash](images/dash-slack.png)
+
+**Na primeira vez** (e só nela) o assistente pede uma configuração de 1 minuto, porque o Slack exige que cada
+instalação tenha o próprio *app*:
+
+1. Clique em **Criar o app no Slack**. O link abre o Slack com o nome, as permissões e a URL de retorno **já preenchidos**;
+   é só confirmar em *Create*.
+2. Copie o **Client ID** e o **Client Secret** (*Basic Information → App Credentials*) e cole na tela. O secret fica criptografado.
+
+Depois disso, **Conectar com Slack** é um clique só. Reconectar o mesmo workspace troca o token e mantém o nome do robô.
+
+| O que você configura | Como funciona |
+|---|---|
+| **Canal** | A lista vem do Slack (públicos e privados em que o robô está). O robô pode escrever em canais públicos sem ser convidado (`chat:write.public`); em canais privados, convide-o com `/invite`. |
+| **Nome e ícone do robô** | Cada mensagem sai com o nome e o emoji que você escolheu (`chat:write.customize`). |
+
+### Por que a volta do Slack passa por uma página no GitHub Pages?
+
+O Slack só aceita URL de retorno em **HTTPS** (`http://localhost` não é aceito). Como o obskitpy roda na sua máquina,
+a volta passa por `https://pedrowill-dev.github.io/obskitpy/oauth/slack-callback.html`, uma página **estática** que só
+devolve o navegador para o `localhost` de onde você começou e **não guarda nada**. Ela só encaminha para
+`localhost`/`127.0.0.1`; o `state` é assinado e expira em 10 minutos pelo seu portal.
+
+Se o seu portal tem um endereço HTTPS próprio, defina `OBSKITPY_PUBLIC_ORIGIN=https://obs.empresa.com` no
+`observability/.portal.env`: a volta do Slack vai direto para `https://obs.empresa.com/api/v1/oauth/slack/callback`
+e a página do GitHub Pages deixa de ser usada. (Para outro endereço de retorno estático, use `OBSKITPY_OAUTH_RELAY`.)
+
+!!! note "Slack por webhook continua existindo"
+    Se você só quer postar num canal fixo, **+ Nova integração → Slack** com um *Incoming Webhook* continua valendo
+    e não precisa de app nem de OAuth.
+
+## Como conectar os outros provedores
 
 | Provedor | O que você precisa | Destino |
 |---|---|---|
 | **Telegram** | Um bot criado no @BotFather (token) | ID do chat (número, ou `@canal`). O bot só escreve para quem já conversou com ele. |
 | **Microsoft Teams** | Um *Workflow* do Teams ("Postar em um canal quando uma solicitação de webhook for recebida"); cole a URL gerada | O canal é o do workflow |
-| **Slack** | Um *Incoming Webhook* do seu app Slack | O canal é o escolhido ao criar o webhook |
+| **Slack (webhook)** | Um *Incoming Webhook* do seu app Slack | O canal é o escolhido ao criar o webhook. Para conectar com um clique, veja acima |
 | **E-mail (SMTP)** | Servidor, porta, usuário, senha e remetente. No Gmail: `smtp.gmail.com:587` com uma **senha de app** | E-mail do destinatário |
 
 O botão **Testar** valida as credenciais (no Telegram, confirma o token e o nome do bot) e, escolhendo um destino,
@@ -96,7 +132,7 @@ Planejado, **ainda não implementado**:
 | 2. Envio | Templates de mensagem, workers com retentativa e deduplicação, histórico de entregas |
 | 3. Alertas | Avaliador de regras sobre o Elasticsearch (limiares, janelas, agrupamento por assinatura) e incidentes |
 | 4. Operação | Reconhecimento, escalonamento, silêncio e recuperação |
-| 5. Multicanal | Conexão por OAuth (Gmail, Slack) e Teams via Graph |
+| 5. Multicanal | Conexão por OAuth do Gmail e Teams via Graph (o Slack por OAuth já está disponível) |
 | 6. Editor visual | Construtor de fluxos de alerta |
 | 7. Inteligência | Sugestão de causas e roteamento |
 
@@ -109,6 +145,9 @@ Um ponto a resolver antes das regras: hoje "Execuções com erro" pode ficar em 
 - **A aba Integrações diz que o portal não está ativado:** rode `obskitpy portal enable` (e `obskitpy up` se a stack estiver parada).
 - **O portal demora a subir na primeira vez:** ele instala o pacote dentro do container; acompanhe com
   `docker compose -p obskitpy-<servico> logs -f portal`.
+- **Slack — `redirect_uri_mismatch`:** o app foi criado sem o manifesto. No app do Slack, em *OAuth & Permissions → Redirect URLs*, adicione a URL mostrada na tela de configuração.
+- **Slack — `not_in_channel`:** o canal é privado e o robô não entrou: no Slack, `/invite @nome-do-robo`.
+- **Slack — `invalid_auth` / `token_revoked`:** o acesso foi removido no Slack; clique em **Reconectar**.
 - **Esqueci a senha:** `obskitpy portal password`.
 - **"OBSKITPY_SECRET_KEY ausente":** o `observability/.portal.env` foi apagado. Rode `obskitpy portal enable` de novo
   (atenção: novos segredos não conseguem ler integrações guardadas com a chave anterior).

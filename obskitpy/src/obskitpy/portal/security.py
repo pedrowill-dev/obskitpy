@@ -60,6 +60,25 @@ def read_token(secret: str, token: str) -> int | None:
         return None
 
 
+def make_state(secret: str, payload: dict, ttl: int = 600) -> str:
+    """`state` do OAuth: payload + expiração, assinado. A parte antes do ponto é legível (a página de retorno lê a origem)."""
+    body = _b64(json.dumps({**payload, "exp": int(time.time()) + ttl}, separators=(",", ":")).encode())
+    sig = _b64(hmac.new(hashlib.sha256(b"oauth-state:" + secret.encode()).digest(), body.encode(), hashlib.sha256).digest())
+    return f"{body}.{sig}"
+
+
+def read_state(secret: str, state: str) -> dict | None:
+    try:
+        body, sig = state.split(".")
+        good = hmac.new(hashlib.sha256(b"oauth-state:" + secret.encode()).digest(), body.encode(), hashlib.sha256).digest()
+        if not hmac.compare_digest(good, _unb64(sig)):
+            return None
+        data = json.loads(_unb64(body))
+        return data if data.get("exp", 0) > time.time() else None
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
 def _fernet(secret: str) -> Fernet:
     return Fernet(base64.urlsafe_b64encode(hashlib.sha256(b"vault:" + secret.encode()).digest()))
 

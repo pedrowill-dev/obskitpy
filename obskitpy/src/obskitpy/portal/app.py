@@ -2,20 +2,24 @@
 
 Executar:  uvicorn obskitpy.portal.app:create_app --factory --host 0.0.0.0 --port 8000
 """
-import os
+import json
+import re
+import secrets as pysecrets
+import urllib.parse
 from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import providers, schemas
 from .db import Base, make_engine, make_session_factory
-from .models import AuditEvent, Contact, ContactGroup, Destination, ProviderConnection, User, now
-from .security import (LoginLimiter, decrypt_secrets, encrypt_secrets, hash_password, make_token, read_token,
-                       verify_password)
+from .models import AuditEvent, Contact, ContactGroup, Destination, OAuthApp, ProviderConnection, User, now
+from .security import (LoginLimiter, decrypt_secrets, encrypt_secrets, hash_password, make_state, make_token, read_state,
+                       read_token, verify_password)
 from .settings import Settings, load
 
 COOKIE = "obskitpy_session"
@@ -163,6 +167,8 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
 
     @app.post("/api/v1/integrations", response_model=schemas.IntegrationOut, status_code=201)
     def create_integration(body: schemas.IntegrationIn, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
+        if body.kind == "slack_app":
+            raise HTTPException(422, "o Slack conectado é criado pelo botão “Conectar com Slack”, não por este cadastro")
         try:
             config, secrets = providers.validate(body.kind, body.config, body.secrets, settings.allow_private_webhooks)
         except ValueError as exc:
@@ -181,6 +187,8 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
         conn = db.get(ProviderConnection, conn_id)
         if not conn:
             raise HTTPException(404, "integração não encontrada")
+        if conn.kind == "slack_app" and body.secrets:
+            raise HTTPException(422, "o token do Slack só muda reconectando (botão “Conectar com Slack”)")
         stored = decrypt_secrets(settings.secret_key, conn.secrets_enc) if conn.secrets_enc else {}
         try:
             config, new_secrets = providers.validate(conn.kind, {**conn.config, **(body.config or {})}, body.secrets or {},
@@ -230,6 +238,117 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
         db.commit()
         audit(db, actor.email, "integration.test", "integration", conn.id, ok=result.ok, destination_id=body.destination_id)
         return schemas.TestOut(ok=result.ok, detail=result.detail, retry_after=result.retry_after)
+
+    # ---------- Slack: "Conectar com Slack" (OAuth) ----------
+    origin_ok = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d{2,5})?$")
+
+    def slack_redirect_uri() -> str:
+        return f"{settings.public_origin}/api/v1/oauth/slack/callback" if settings.public_origin else settings.oauth_relay_url
+
+    @app.get("/api/v1/oauth/slack/status")
+    def slack_status(db: Session = Depends(get_db), _: User = Depends(current_user)):
+        row = db.get(OAuthApp, "slack")
+        redirect = slack_redirect_uri()
+        manifest = json.dumps(providers.slack_manifest(redirect), separators=(",", ":"), ensure_ascii=False)
+        return {"configured": bool(row), "client_id": row.client_id if row else "", "redirect_uri": redirect,
+                "mode": "direct" if settings.public_origin else "relay", "scopes": list(providers.SLACK_BOT_SCOPES),
+                "manifest_url": "https://api.slack.com/apps?new_app=1&manifest_json=" + urllib.parse.quote(manifest, safe="")}
+
+    @app.put("/api/v1/oauth/slack/app", status_code=204)
+    def slack_save_app(body: schemas.SlackAppIn, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
+        client_id, secret = body.client_id.strip(), body.client_secret.strip()
+        if not re.fullmatch(r"\d+\.\d+", client_id):
+            raise HTTPException(422, "o Client ID do Slack tem o formato 1234567890.1234567890")
+        if not re.fullmatch(r"[0-9a-fA-F]{20,64}", secret):
+            raise HTTPException(422, "o Client Secret do Slack é uma sequência de letras e números (copie de Basic Information)")
+        row = db.get(OAuthApp, "slack") or OAuthApp(provider="slack")
+        row.client_id, row.client_secret_enc = client_id, encrypt_secrets(settings.secret_key, {"secret": secret})
+        db.add(row)
+        db.commit()
+        audit(db, actor.email, "oauth.slack.configure", "oauth_app", "slack", client_id=client_id)
+
+    @app.delete("/api/v1/oauth/slack/app", status_code=204)
+    def slack_delete_app(db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
+        row = db.get(OAuthApp, "slack")
+        if row:
+            db.delete(row)
+            db.commit()
+            audit(db, actor.email, "oauth.slack.remove", "oauth_app", "slack")
+
+    @app.post("/api/v1/oauth/slack/start")
+    def slack_start(body: schemas.SlackStartIn, db: Session = Depends(get_db), actor: User = Depends(need("admin"))):
+        row = db.get(OAuthApp, "slack")
+        if not row:
+            raise HTTPException(422, "informe primeiro o Client ID e o Client Secret do app do Slack")
+        origin = body.origin.rstrip("/")
+        if not origin_ok.match(origin) and origin != settings.public_origin:
+            raise HTTPException(422, "origem não permitida para o retorno do Slack")
+        state = make_state(settings.secret_key, {"o": origin, "u": actor.id, "n": pysecrets.token_urlsafe(8)})
+        query = urllib.parse.urlencode({"client_id": row.client_id, "scope": ",".join(providers.SLACK_BOT_SCOPES),
+                                        "redirect_uri": slack_redirect_uri(), "state": state})
+        audit(db, actor.email, "oauth.slack.start", "oauth_app", "slack")
+        return {"url": f"https://slack.com/oauth/v2/authorize?{query}"}
+
+    @app.get("/api/v1/oauth/slack/callback")
+    async def slack_callback(code: str = "", state: str = "", error: str = "", db: Session = Depends(get_db)):
+        # chega por redirecionamento vindo do Slack (outro site): não há cookie, o `state` assinado identifica o usuário
+        payload = read_state(settings.secret_key, state)
+        if not payload:
+            return HTMLResponse("<h1>Link expirado ou inválido</h1><p>Volte ao obskitpy e clique em “Conectar com Slack” de novo.</p>", status_code=400)
+
+        def back(**query) -> RedirectResponse:
+            return RedirectResponse(f"{payload['o']}/#integrations?{urllib.parse.urlencode(query)}", status_code=303)
+
+        if error:
+            return back(slack_error=error)
+        user, row = db.get(User, payload["u"]), db.get(OAuthApp, "slack")
+        if not user or not user.active or user.role != "admin" or not row:
+            return back(slack_error="sessão inválida")
+        secret = decrypt_secrets(settings.secret_key, row.client_secret_enc)["secret"]
+        body = await providers.slack_call("oauth.v2.access", data={"client_id": row.client_id, "client_secret": secret, "code": code,
+                                                                  "redirect_uri": slack_redirect_uri()})
+        if not body.get("ok") or not body.get("access_token"):
+            return back(slack_error=body.get("error", "erro"))
+        team = body.get("team") or {}
+        config_new = {"team_id": team.get("id", ""), "team_name": team.get("name", ""), "bot_user_id": body.get("bot_user_id", "")}
+        secrets_enc = encrypt_secrets(settings.secret_key, {"bot_token": body["access_token"]})
+        conn = next((c for c in db.scalars(select(ProviderConnection).where(ProviderConnection.kind == "slack_app"))
+                     if c.config.get("team_id") == config_new["team_id"]), None)
+        if conn:  # reconectar o mesmo workspace: troca o token e mantém o nome e o ícone do robô
+            conn.config, conn.secrets_enc = {**conn.config, **config_new}, secrets_enc
+            conn.status, conn.last_error = "untested", ""
+        else:
+            conn = ProviderConnection(kind="slack_app", name=f"Slack · {team.get('name') or 'workspace'}", secrets_enc=secrets_enc,
+                                      config={"bot_name": "obskitpy", **config_new})
+            db.add(conn)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            return back(slack_error="já existe uma integração com esse nome")
+        audit(db, user.email, "oauth.slack.connect", "integration", conn.id, team=config_new["team_name"])
+        return back(connected=conn.id)
+
+    @app.get("/api/v1/integrations/{conn_id}/slack/channels")
+    async def slack_channels(conn_id: int, db: Session = Depends(get_db), _: User = Depends(current_user)):
+        conn = db.get(ProviderConnection, conn_id)
+        if not conn or conn.kind != "slack_app":
+            raise HTTPException(404, "integração do Slack não encontrada")
+        token = decrypt_secrets(settings.secret_key, conn.secrets_enc)["bot_token"]
+        channels, cursor = [], ""
+        for _page in range(5):
+            data = {"types": "public_channel,private_channel", "exclude_archived": "true", "limit": "200"}
+            if cursor:
+                data["cursor"] = cursor
+            body = await providers.slack_call("conversations.list", token, data=data)
+            if not body.get("ok"):
+                raise HTTPException(502, providers.SLACK_ERRORS.get(body.get("error", ""), f"o Slack respondeu: {body.get('error', 'erro')}"))
+            channels += [{"id": c["id"], "name": c["name"], "private": bool(c.get("is_private")), "member": bool(c.get("is_member"))}
+                         for c in body.get("channels", [])]
+            cursor = (body.get("response_metadata") or {}).get("next_cursor", "")
+            if not cursor:
+                break
+        return sorted(channels, key=lambda c: c["name"])
 
     # ---------- destinos ----------
     @app.get("/api/v1/destinations", response_model=list[schemas.DestinationOut])

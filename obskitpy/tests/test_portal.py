@@ -260,3 +260,225 @@ def test_bearer_token_works_without_csrf_header(client):
     client.cookies.clear()
     r = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
+
+
+# ---------- Slack: "Conectar com Slack" (OAuth) ----------
+import urllib.parse as up  # noqa: E402
+
+from obskitpy.portal import security as sec  # noqa: E402
+
+BOT_TOKEN = "xoxb-1111-2222-SEGREDODOBOT"
+
+
+@pytest.fixture
+def slack(monkeypatch):
+    """Cliente com um Slack falso: responde às chamadas da Web API e guarda o que recebeu."""
+    state = {"calls": [], "channels": [{"id": "C0123456789", "name": "operacoes", "is_private": False, "is_member": True},
+                                       {"id": "G0123456789", "name": "alertas-sap", "is_private": True, "is_member": True}],
+             "post_error": None, "auth_ok": True, "pages": False}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        method = request.url.path.rsplit("/", 1)[-1]
+        body = dict(up.parse_qsl(request.content.decode())) if request.headers.get("content-type", "").startswith("application/x-www") \
+            else (json.loads(request.content) if request.content else {})
+        state["calls"].append((method, body, request.headers.get("authorization", "")))
+        if method == "oauth.v2.access":
+            if body.get("code") != "codigo-valido":
+                return httpx.Response(200, json={"ok": False, "error": "invalid_code"})
+            return httpx.Response(200, json={"ok": True, "access_token": BOT_TOKEN, "bot_user_id": "U999", "team": {"id": "T1", "name": "Empresa"}})
+        if method == "auth.test":
+            return httpx.Response(200, json={"ok": True, "team": "Empresa", "user": "obskitpy"} if state["auth_ok"] else {"ok": False, "error": "invalid_auth"})
+        if method == "chat.postMessage":
+            return httpx.Response(200, json={"ok": False, "error": state["post_error"]} if state["post_error"] else {"ok": True})
+        if method == "conversations.list":
+            if state["pages"] and not body.get("cursor"):
+                return httpx.Response(200, json={"ok": True, "channels": state["channels"][:1], "response_metadata": {"next_cursor": "pg2"}})
+            rest = state["channels"][1:] if state["pages"] else state["channels"]
+            return httpx.Response(200, json={"ok": True, "channels": rest, "response_metadata": {"next_cursor": ""}})
+        return httpx.Response(404)
+    monkeypatch.setattr(providers, "HTTP_TRANSPORT", httpx.MockTransport(handler))
+    return state
+
+
+@pytest.fixture
+def sclient(slack):
+    settings = Settings("sqlite:///:memory:", SECRET, 3600, False, False, "admin@empresa.com", "senha-forte-123")
+    app = create_app(settings)
+    with TestClient(app, follow_redirects=False) as c:
+        c.app_state = app.state
+        yield c
+
+
+CLIENT_ID, CLIENT_SECRET = "1234567890.0987654321", "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+
+
+def configure_slack_app(client):
+    r = client.put("/api/v1/oauth/slack/app", json={"client_id": CLIENT_ID, "client_secret": CLIENT_SECRET}, headers=CSRF)
+    assert r.status_code == 204, r.text
+
+
+def start_oauth(client, origin="http://localhost:8602"):
+    r = client.post("/api/v1/oauth/slack/start", json={"origin": origin}, headers=CSRF)
+    assert r.status_code == 200, r.text
+    return r.json()["url"]
+
+
+def state_of(url):
+    return up.parse_qs(up.urlparse(url).query)["state"][0]
+
+
+def connect_slack(client, team_ok=True):
+    login(client)
+    configure_slack_app(client)
+    state = state_of(start_oauth(client))
+    r = client.get("/api/v1/oauth/slack/callback", params={"code": "codigo-valido", "state": state})
+    assert r.status_code == 303, r.text
+    return r
+
+
+def test_slack_status_has_manifest_and_relay(sclient):
+    login(sclient)
+    st = sclient.get("/api/v1/oauth/slack/status").json()
+    assert st["configured"] is False and st["mode"] == "relay" and st["redirect_uri"].startswith("https://")
+    manifest = json.loads(up.unquote(st["manifest_url"].split("manifest_json=")[1]))
+    assert manifest["oauth_config"]["redirect_urls"] == [st["redirect_uri"]]
+    assert {"chat:write", "chat:write.customize", "channels:read"} <= set(manifest["oauth_config"]["scopes"]["bot"])
+    assert st["manifest_url"].startswith("https://api.slack.com/apps?new_app=1&manifest_json=")
+
+
+def test_slack_app_credentials_validated_and_secret_not_returned(sclient):
+    login(sclient)
+    assert sclient.put("/api/v1/oauth/slack/app", json={"client_id": "abc", "client_secret": CLIENT_SECRET}, headers=CSRF).status_code == 422
+    assert sclient.put("/api/v1/oauth/slack/app", json={"client_id": CLIENT_ID, "client_secret": "nao-hexadecimal!!"}, headers=CSRF).status_code == 422
+    configure_slack_app(sclient)
+    st = sclient.get("/api/v1/oauth/slack/status").json()
+    assert st["configured"] and st["client_id"] == CLIENT_ID and CLIENT_SECRET not in json.dumps(st)
+    with sclient.app_state.sessions() as db:
+        assert CLIENT_SECRET not in db.execute(text("SELECT client_secret_enc FROM oauth_apps")).scalar()
+
+
+def test_start_requires_app_admin_and_allowed_origin(sclient):
+    login(sclient)
+    assert sclient.post("/api/v1/oauth/slack/start", json={"origin": "http://localhost:8602"}, headers=CSRF).status_code == 422  # sem app
+    configure_slack_app(sclient)
+    assert sclient.post("/api/v1/oauth/slack/start", json={"origin": "https://evil.example.com"}, headers=CSRF).status_code == 422
+    url = start_oauth(sclient, "http://localhost:8602/")
+    q = up.parse_qs(up.urlparse(url).query)
+    assert url.startswith("https://slack.com/oauth/v2/authorize?") and q["client_id"] == [CLIENT_ID]
+    assert q["redirect_uri"][0].endswith("slack-callback.html") and "chat:write.customize" in q["scope"][0]
+    payload = sec.read_state(SECRET, q["state"][0])
+    assert payload["o"] == "http://localhost:8602" and payload["u"] >= 1
+
+
+def test_oauth_state_is_signed_and_expires():
+    state = sec.make_state(SECRET, {"o": "http://localhost:1", "u": 1})
+    assert sec.read_state(SECRET, state)["o"] == "http://localhost:1"
+    assert sec.read_state(SECRET, state[:-2] + "xx") is None and sec.read_state("outra" * 10, state) is None
+    assert sec.read_state(SECRET, sec.make_state(SECRET, {"o": "x"}, ttl=-1)) is None
+
+
+def test_slack_connect_creates_encrypted_connection_and_redirects(sclient, slack):
+    r = connect_slack(sclient)
+    assert r.headers["location"].startswith("http://localhost:8602/#integrations?connected=")
+    exchange = next(c for c in slack["calls"] if c[0] == "oauth.v2.access")[1]
+    assert exchange["client_secret"] == CLIENT_SECRET and exchange["code"] == "codigo-valido" and exchange["redirect_uri"].startswith("https://")
+    ints = sclient.get("/api/v1/integrations").json()
+    assert len(ints) == 1 and ints[0]["kind"] == "slack_app" and ints[0]["name"] == "Slack · Empresa"
+    assert ints[0]["config"]["bot_name"] == "obskitpy" and ints[0]["config"]["team_name"] == "Empresa"
+    assert BOT_TOKEN not in json.dumps(ints)
+    with sclient.app_state.sessions() as db:
+        raw = db.execute(text("SELECT secrets_enc, config FROM provider_connections")).one()
+    assert BOT_TOKEN not in raw[0] and BOT_TOKEN not in str(raw[1])
+    assert "oauth.slack.connect" in [e["action"] for e in sclient.get("/api/v1/audit").json()]
+
+
+def test_slack_reconnect_same_workspace_keeps_bot_name(sclient, slack):
+    connect_slack(sclient)
+    cid = sclient.get("/api/v1/integrations").json()[0]["id"]
+    assert sclient.put(f"/api/v1/integrations/{cid}", json={"config": {"bot_name": "Robô de Compras", "icon_emoji": ":robot_face:"}}, headers=CSRF).status_code == 200
+    state = state_of(start_oauth(sclient))
+    assert sclient.get("/api/v1/oauth/slack/callback", params={"code": "codigo-valido", "state": state}).status_code == 303
+    ints = sclient.get("/api/v1/integrations").json()
+    assert len(ints) == 1 and ints[0]["config"]["bot_name"] == "Robô de Compras" and ints[0]["config"]["team_id"] == "T1"
+
+
+def test_callback_rejects_bad_state_and_handles_slack_errors(sclient, slack):
+    login(sclient)
+    configure_slack_app(sclient)
+    assert sclient.get("/api/v1/oauth/slack/callback", params={"code": "x", "state": "lixo"}).status_code == 400
+    assert sclient.get("/api/v1/oauth/slack/callback", params={"code": "x", "state": sec.make_state(SECRET, {"o": "http://localhost:1", "u": 1}, ttl=-5)}).status_code == 400
+    state = state_of(start_oauth(sclient))
+    r = sclient.get("/api/v1/oauth/slack/callback", params={"error": "access_denied", "state": state})
+    assert r.status_code == 303 and "slack_error=access_denied" in r.headers["location"]
+    r = sclient.get("/api/v1/oauth/slack/callback", params={"code": "codigo-errado", "state": state})
+    assert "slack_error=invalid_code" in r.headers["location"] and sclient.get("/api/v1/integrations").json() == []
+
+
+def test_callback_requires_the_admin_who_started(sclient, slack):
+    login(sclient)
+    configure_slack_app(sclient)
+    make_user_state = sec.make_state(SECRET, {"o": "http://localhost:8602", "u": 9999, "n": "x"})  # usuário inexistente
+    r = sclient.get("/api/v1/oauth/slack/callback", params={"code": "codigo-valido", "state": make_user_state})
+    assert "slack_error" in r.headers["location"] and sclient.get("/api/v1/integrations").json() == []
+
+
+def test_slack_channels_listing_paginates(sclient, slack):
+    slack["pages"] = True
+    connect_slack(sclient)
+    cid = sclient.get("/api/v1/integrations").json()[0]["id"]
+    chans = sclient.get(f"/api/v1/integrations/{cid}/slack/channels").json()
+    assert [c["name"] for c in chans] == ["alertas-sap", "operacoes"] and chans[0]["private"] is True
+    token_header = [c[2] for c in slack["calls"] if c[0] == "conversations.list"][0]
+    assert token_header == f"Bearer {BOT_TOKEN}"
+
+
+def test_slack_test_sends_with_custom_bot_name(sclient, slack):
+    connect_slack(sclient)
+    cid = sclient.get("/api/v1/integrations").json()[0]["id"]
+    sclient.put(f"/api/v1/integrations/{cid}", json={"config": {"bot_name": "Robô SAP", "icon_emoji": ":rotating_light:"}}, headers=CSRF)
+    dest = sclient.post("/api/v1/destinations", json={"connection_id": cid, "name": "#operacoes", "target": "C0123456789"}, headers=CSRF).json()
+    assert sclient.post("/api/v1/destinations", json={"connection_id": cid, "name": "x", "target": "operacoes"}, headers=CSRF).status_code == 422
+    r = sclient.post(f"/api/v1/integrations/{cid}/test", json={"destination_id": dest["id"]}, headers=CSRF).json()
+    assert r["ok"] and "Empresa" in r["detail"]
+    post = next(c[1] for c in slack["calls"] if c[0] == "chat.postMessage")
+    assert post["channel"] == "C0123456789" and post["username"] == "Robô SAP" and post["icon_emoji"] == ":rotating_light:"
+    assert sclient.get("/api/v1/integrations").json()[0]["status"] == "ok"
+
+
+def test_slack_errors_are_explained_in_portuguese(sclient, slack):
+    connect_slack(sclient)
+    cid = sclient.get("/api/v1/integrations").json()[0]["id"]
+    dest = sclient.post("/api/v1/destinations", json={"connection_id": cid, "name": "#x", "target": "C0123456789"}, headers=CSRF).json()
+    slack["post_error"] = "not_in_channel"
+    r = sclient.post(f"/api/v1/integrations/{cid}/test", json={"destination_id": dest["id"]}, headers=CSRF).json()
+    assert not r["ok"] and "/invite" in r["detail"]
+    slack["post_error"], slack["auth_ok"] = None, False
+    r = sclient.post(f"/api/v1/integrations/{cid}/test", json={}, headers=CSRF).json()
+    assert not r["ok"] and "conecte de novo" in r["detail"]
+
+
+def test_slack_app_cannot_be_created_or_have_its_token_set_by_hand(sclient, slack):
+    login(sclient)
+    assert sclient.post("/api/v1/integrations", json={"kind": "slack_app", "name": "x", "secrets": {"bot_token": "xoxb-falso"}}, headers=CSRF).status_code == 422
+    connect_slack(sclient)
+    cid = sclient.get("/api/v1/integrations").json()[0]["id"]
+    assert sclient.put(f"/api/v1/integrations/{cid}", json={"secrets": {"bot_token": "xoxb-outro"}}, headers=CSRF).status_code == 422
+    assert sclient.put(f"/api/v1/integrations/{cid}", json={"config": {"icon_emoji": "sem-dois-pontos"}}, headers=CSRF).status_code == 422
+    assert sclient.put(f"/api/v1/integrations/{cid}", json={"config": {"bot_name": "x" * 81}}, headers=CSRF).status_code == 422
+
+
+def test_direct_mode_uses_the_portal_callback_when_public_origin_is_set(slack):
+    settings = Settings("sqlite:///:memory:", SECRET, 3600, False, False, "admin@empresa.com", "senha-forte-123", public_origin="https://obs.empresa.com")
+    with TestClient(create_app(settings)) as c:
+        login(c)
+        st = c.get("/api/v1/oauth/slack/status").json()
+        assert st["mode"] == "direct" and st["redirect_uri"] == "https://obs.empresa.com/api/v1/oauth/slack/callback"
+        configure_slack_app(c)
+        assert c.post("/api/v1/oauth/slack/start", json={"origin": "https://obs.empresa.com"}, headers=CSRF).status_code == 200
+
+
+def test_kinds_catalog_marks_slack_app_as_oauth_and_hides_internal_fields(sclient):
+    login(sclient)
+    kinds = {k["kind"]: k for k in sclient.get("/api/v1/integrations/kinds").json()}
+    assert kinds["slack_app"]["oauth"] == "slack" and kinds["telegram"]["oauth"] is None
+    assert [f["name"] for f in kinds["slack_app"]["config_fields"]] == ["bot_name", "icon_emoji"]

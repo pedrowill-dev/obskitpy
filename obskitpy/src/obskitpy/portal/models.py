@@ -76,6 +76,15 @@ class ContactGroup(Base):
     members: Mapped[list[Contact]] = relationship(secondary=group_members)
 
 
+class OAuthApp(Base):
+    """Credenciais do app do provedor (ex.: o app do Slack que o usuário criou) usadas no \"Conectar com...\"."""
+    __tablename__ = "oauth_apps"
+    provider: Mapped[str] = mapped_column(String(30), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(120))
+    client_secret_enc: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     id: Mapped[int] = mapped_column(primary_key=True)

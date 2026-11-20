@@ -569,3 +569,18 @@ def test_nginx_resolves_upstreams_lazily():
     from importlib import resources
     conf = resources.files("obskitpy.templates").joinpath("nginx.conf").read_text()
     assert "resolver 127.0.0.11" in conf and "set $portal" in conf and "set $elasticsearch" in conf
+
+
+def test_portal_enable_picks_a_free_port_when_default_is_busy(tmp_path):
+    import socket
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--local", "dash-obskitpy", "--standalone", "--yes"])
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        busy = s.getsockname()[1]
+        cli.set_env_keys(obs / ".env", {"PORTAL_PORT": str(busy)})
+        main(["portal", "enable", "--dir", str(obs), "--no-start"])
+    assert cli.read_env(obs / ".env")["PORTAL_PORT"] != str(busy)
+    port = cli.read_env(obs / ".env")["PORTAL_PORT"]
+    main(["portal", "enable", "--dir", str(obs), "--no-start"])  # de novo: mantém a porta já escolhida
+    assert cli.read_env(obs / ".env")["PORTAL_PORT"] == port

@@ -51,7 +51,7 @@ Vários projetos podem usar a **mesma stack**: o `init` detecta uma stack já ro
 
 ## Portal de alertas e integrações (Fase 1)
 
-O `obskitpy portal enable` liga uma base de **integrações** (PostgreSQL + API + uma aba no dash): conecte **Telegram, Microsoft Teams, Slack e e-mail**, cadastre destinos, contatos e grupos e **teste** o envio. Segredos criptografados, perfis de acesso e auditoria. O motor de regras e os incidentes vêm nas próximas fases — veja o [roadmap](docs/portal.md#roadmap).
+O `obskitpy portal enable` liga uma base de **integrações** (PostgreSQL + API + uma aba no dash): conecte **Telegram, Microsoft Teams, Slack e e-mail**, cadastre destinos, contatos e grupos e **teste** o envio. **Conectar com Slack em um clique** (e escolher canal, nome e ícone do robô). Segredos criptografados, perfis de acesso e auditoria. O motor de regras e os incidentes vêm nas próximas fases — veja o [roadmap](docs/portal.md#roadmap).
 
 ![Integrações no dash-obskitpy](docs/images/dash-integracoes.png)
 

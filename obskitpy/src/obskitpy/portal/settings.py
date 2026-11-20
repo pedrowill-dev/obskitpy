@@ -12,6 +12,8 @@ class Settings:
     allow_private_webhooks: bool
     admin_email: str
     admin_password: str
+    public_origin: str = ""        # se o portal tem endereço HTTPS público, o OAuth volta direto para ele
+    oauth_relay_url: str = "https://pedrowill-dev.github.io/obskitpy/oauth/slack-callback.html"
 
 
 def load() -> Settings:
@@ -26,4 +28,6 @@ def load() -> Settings:
         allow_private_webhooks=os.environ.get("OBSKITPY_ALLOW_PRIVATE_WEBHOOKS", "0") == "1",
         admin_email=os.environ.get("OBSKITPY_ADMIN_EMAIL", ""),
         admin_password=os.environ.get("OBSKITPY_ADMIN_PASSWORD", ""),
+        public_origin=os.environ.get("OBSKITPY_PUBLIC_ORIGIN", "").rstrip("/"),
+        oauth_relay_url=os.environ.get("OBSKITPY_OAUTH_RELAY", "https://pedrowill-dev.github.io/obskitpy/oauth/slack-callback.html"),
     )

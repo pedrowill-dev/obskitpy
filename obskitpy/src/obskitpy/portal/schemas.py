@@ -99,6 +99,15 @@ class GroupOut(BaseModel):
     member_ids: list[int]
 
 
+class SlackAppIn(BaseModel):
+    client_id: str = Field(min_length=3, max_length=60)
+    client_secret: str = Field(min_length=10, max_length=120)
+
+
+class SlackStartIn(BaseModel):
+    origin: str = Field(max_length=200)
+
+
 class AuditOut(BaseModel):
     id: int
     at: datetime

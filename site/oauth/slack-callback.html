@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Voltando para o obskitpy…</title>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0a1020;color:#e6edf8;font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;padding:24px}
+  main{max-width:520px}h1{font-size:24px;margin:0 0 10px}p{color:#94a4c2;margin:8px 0}a{color:#19d3b6}code{background:#17223a;padding:2px 7px;border-radius:6px;color:#cfe0ff}
+  .spin{width:34px;height:34px;border:4px solid #212f50;border-top-color:#19d3b6;border-radius:50%;margin:0 auto 18px;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<main>
+  <div class="spin" id="spin" aria-hidden="true"></div>
+  <h1 id="title">Voltando para o obskitpy…</h1>
+  <p id="msg">Terminando a conexão com o Slack.</p>
+  <p><a id="manual" hidden>Clique aqui se a página não voltar sozinha</a></p>
+  <p style="font-size:13px">Esta página é só um ponto de retorno: ela devolve você para o seu obskitpy em <code>localhost</code> e não guarda nada.</p>
+</main>
+<script>
+/* O Slack só devolve o usuário para uma URL HTTPS. Como o obskitpy roda na sua máquina, o retorno passa por aqui e é
+   encaminhado SOMENTE para localhost/127.0.0.1 (a origem vem dentro do `state`, que o seu portal assina e confere). */
+(function () {
+  var q = new URLSearchParams(location.search), state = q.get("state") || "", origin = null;
+  function fail(text) {
+    document.getElementById("spin").hidden = true;
+    document.getElementById("title").textContent = "Não consegui voltar para o obskitpy";
+    document.getElementById("msg").textContent = text;
+  }
+  try {
+    var body = state.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
+    body += "=".repeat((4 - (body.length % 4)) % 4);
+    origin = JSON.parse(atob(body)).o;
+  } catch (e) {}
+  if (typeof origin !== "string" || !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d{2,5})?$/.test(origin)) {
+    return fail("O endereço de retorno não é local. Abra o seu dashboard do obskitpy e clique em “Conectar com Slack” de novo.");
+  }
+  var parts = ["code", "state", "error"].filter(function (k) { return q.get(k) !== null; })
+    .map(function (k) { return k + "=" + encodeURIComponent(q.get(k)); });
+  var target = origin + "/api/v1/oauth/slack/callback?" + parts.join("&");
+  var a = document.getElementById("manual");
+  a.href = target; a.hidden = false;
+  location.replace(target);
+})();
+</script>
+</body>
+</html>

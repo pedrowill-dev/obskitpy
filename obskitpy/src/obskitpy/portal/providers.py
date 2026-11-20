@@ -124,6 +124,71 @@ def _teams_payload(m: Message) -> dict:
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.4", "body": body}}]}
 
 
+# ---------- Slack conectado por OAuth ("Conectar com Slack") ----------
+
+SLACK_API = "https://slack.com/api"
+SLACK_BOT_SCOPES = ("chat:write", "chat:write.customize", "chat:write.public", "channels:read", "groups:read")
+SLACK_ERRORS = {
+    "invalid_auth": "a conexão com o Slack não é mais válida: conecte de novo",
+    "token_revoked": "o acesso do obskitpy foi revogado no Slack: conecte de novo",
+    "account_inactive": "a conta do app no Slack está inativa: conecte de novo",
+    "channel_not_found": "o canal não foi encontrado (confira se ele existe e se é público, ou convide o robô)",
+    "not_in_channel": "o robô não está nesse canal: convide-o com /invite no Slack",
+    "is_archived": "esse canal está arquivado",
+    "missing_scope": "faltam permissões no app do Slack: conecte de novo",
+    "ratelimited": "limite de envios do Slack",
+}
+
+
+async def slack_call(method: str, token: str | None = None, *, data: dict | None = None, json: dict | None = None) -> dict:
+    """Chama a Web API do Slack (host fixo: slack.com). Devolve o JSON (sempre com a chave `ok`)."""
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        async with _client() as client:
+            resp = await client.post(f"{SLACK_API}/{method}", headers=headers, data=data, json=json)
+    except httpx.HTTPError as exc:
+        return {"ok": False, "error": f"falha de rede: {type(exc).__name__}"}
+    try:
+        body = resp.json()
+    except ValueError:
+        return {"ok": False, "error": f"resposta inesperada do Slack ({resp.status_code})"}
+    if resp.status_code == 429:
+        body = {"ok": False, "error": "ratelimited", "retry_after": _retry_after(resp)}
+    return body
+
+
+def slack_manifest(redirect_url: str, bot_name: str = "obskitpy") -> dict:
+    """Manifesto para criar o app do Slack com um clique (já com permissões e URL de retorno)."""
+    return {"display_information": {"name": bot_name, "description": "Alertas de observabilidade das suas automações"},
+            "features": {"bot_user": {"display_name": bot_name, "always_online": False}},
+            "oauth_config": {"redirect_urls": [redirect_url], "scopes": {"bot": list(SLACK_BOT_SCOPES)}},
+            "settings": {"org_deploy_enabled": False, "socket_mode_enabled": False, "token_rotation_enabled": False}}
+
+
+async def slack_app_send(config: dict, secrets: dict, target: str, m: Message) -> Result:
+    payload = {"channel": target, "text": "\n".join([f"{ICON.get(m.severity, '🔵')} *{m.title}*", m.text] + [f"*{k}:* {v}" for k, v in m.fields])}
+    if config.get("bot_name"):
+        payload["username"] = config["bot_name"]
+    if config.get("icon_emoji"):
+        payload["icon_emoji"] = config["icon_emoji"]
+    body = await slack_call("chat.postMessage", secrets["bot_token"], json=payload)
+    if body.get("ok"):
+        return Result(True, "enviado")
+    err = body.get("error", "erro")
+    return Result(False, SLACK_ERRORS.get(err, f"o Slack respondeu: {err}"), body.get("retry_after"))
+
+
+async def slack_app_test(config: dict, secrets: dict, target: str | None, m: Message) -> Result:
+    body = await slack_call("auth.test", secrets["bot_token"])
+    if not body.get("ok"):
+        return Result(False, SLACK_ERRORS.get(body.get("error", ""), f"o Slack respondeu: {body.get('error', 'erro')}"), body.get("retry_after"))
+    who = f"{body.get('team', 'workspace')} · {body.get('user', 'bot')}"
+    if not target:
+        return Result(True, f"conectado a {who} (escolha um canal para enviar uma mensagem de teste)")
+    sent = await slack_app_send(config, secrets, target, m)
+    return Result(sent.ok, (f"{who}: enviado" if sent.ok else sent.detail), sent.retry_after)
+
+
 # ---------- provedores ----------
 
 TELEGRAM_API = "https://api.telegram.org"
@@ -208,6 +273,13 @@ def _f(name, label, type_="text", required=True, default=None, placeholder=""):
 
 
 PROVIDERS: dict[str, Provider] = {
+    "slack_app": Provider(
+        "slack_app", "Slack (conectado)", "Conecte o Slack com um clique e escolha o canal e o nome do robô.",
+        (_f("bot_name", "Nome do robô", default="obskitpy", placeholder="obskitpy"),
+         _f("icon_emoji", "Ícone do robô (emoji)", required=False, placeholder=":eyes:"),
+         _f("team_id", "", "hidden", required=False), _f("team_name", "", "hidden", required=False), _f("bot_user_id", "", "hidden", required=False)),
+        (_f("bot_token", "Token do robô", "password", required=False),),
+        True, "Canal", slack_app_send, slack_app_test),
     "telegram": Provider(
         "telegram", "Telegram", "Crie um bot no @BotFather, copie o token e use o ID do chat (o bot só escreve para quem já falou com ele).",
         (), (_f("bot_token", "Token do bot", "password", placeholder="123456:ABC-DEF..."),),
@@ -232,8 +304,9 @@ PROVIDERS: dict[str, Provider] = {
 
 
 def catalog() -> list[dict]:
-    return [{"kind": p.kind, "label": p.label, "help": p.help, "config_fields": list(p.config_fields),
-             "secret_fields": list(p.secret_fields), "needs_target": p.needs_target, "target_label": p.target_label}
+    return [{"kind": p.kind, "label": p.label, "help": p.help, "config_fields": [f for f in p.config_fields if f["type"] != "hidden"],
+             "secret_fields": list(p.secret_fields), "needs_target": p.needs_target, "target_label": p.target_label,
+             "oauth": "slack" if p.kind == "slack_app" else None}
             for p in PROVIDERS.values()]
 
 
@@ -264,6 +337,12 @@ def validate(kind: str, config: dict, secrets: dict, allow_private: bool, partia
             assert_public_host(str(clean_cfg["host"]), allow_private)
         if clean_cfg.get("username") and not clean_sec.get("password") and not partial_secrets:
             raise ValueError("informe a senha do usuário SMTP")
+    if kind == "slack_app":
+        name = str(clean_cfg.get("bot_name", ""))
+        if len(name) > 80:
+            raise ValueError("o nome do robô pode ter no máximo 80 caracteres")
+        if clean_cfg.get("icon_emoji") and not re.fullmatch(r":[\w+\-]{1,50}:", str(clean_cfg["icon_emoji"])):
+            raise ValueError("o ícone precisa ser um emoji do Slack no formato :nome:")
     if kind == "telegram" and clean_sec.get("bot_token") and not re.fullmatch(r"\d+:[\w-]{20,}", clean_sec["bot_token"]):
         raise ValueError("o token do Telegram parece inválido (formato esperado: 123456:ABC...)")
     return clean_cfg, clean_sec
@@ -274,6 +353,8 @@ def validate_target(kind: str, target: str) -> str:
     target = (target or "").strip()
     if provider.needs_target and not target:
         raise ValueError(f"informe o {provider.target_label.lower()}")
+    if kind == "slack_app" and not re.fullmatch(r"[CGD][A-Z0-9]{6,}", target):
+        raise ValueError("escolha um canal da lista")
     if kind == "email" and not EMAIL_RE.match(target):
         raise ValueError("o destino precisa ser um e-mail válido")
     if kind == "telegram" and not re.fullmatch(r"-?\d+|@[\w]{4,}", target):
