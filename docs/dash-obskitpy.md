@@ -24,10 +24,37 @@ obskitpy open        # abre em http://localhost:8600
 
 Mudou de ideia? `obskitpy init --force --local ambos` recria a configuração (os dados no Elasticsearch continuam).
 
-## O que o dash mostra
+## Período, atualização e Realtime
 
-O período fica no canto superior direito (15 min, 1 h, 6 h, 24 h ou 7 d) e a atualização é automática a cada
-10 s (dá para desligar em *auto*). Os dados são sempre filtrados pelo seu serviço.
+Tudo isso fica no topo da página, e o dash lembra a sua escolha.
+
+| Controle | O que faz |
+|---|---|
+| **Período** | Quanto tempo para trás mostrar. Atalhos (5 min, 15 min, 1 h, 6 h, 24 h, 7 d) ou **personalizado**: digite o número e escolha **segundos, minutos, horas ou dias** (ex.: últimos 90 segundos, ou 36 horas). |
+| **Atualizar** | De quanto em quanto tempo a tela se atualiza: atalhos (1 s, 5 s, 10 s, 30 s, 1 min, 5 min) ou **personalizado** em **segundos, minutos ou horas**. Dá para desligar a atualização automática (modo manual); o botão ⟳ atualiza na hora. |
+| **Realtime** | O atalho para quando você precisa ver **na hora**. |
+
+### Realtime
+
+Um clique em **Realtime** (ou a tecla **R**) liga o modo ao vivo: janela dos **últimos 5 minutos**, atualização
+**a cada 1 segundo**, o selo vermelho **AO VIVO** no topo e, na aba **Logs**, as linhas novas piscam em verde ao chegar.
+Ao desligar, o dash volta ao período e à atualização que você tinha antes (ou você mesmo ajusta o período
+enquanto está ao vivo).
+
+![Realtime no dash-obskitpy](images/dash-realtime.png)
+
+- **Abrir já ao vivo:** `obskitpy open --realtime` (ou o endereço `http://localhost:8600/#logs?realtime`).
+- **Detalhe aberto:** se você abrir o detalhe de um log, a atualização pausa para a linha não sumir
+  ("⏸ pausado"). Feche o detalhe para voltar ao vivo.
+- **Latência:** o obskitpy envia os dados a cada 1 s e o Collector entrega ao Elasticsearch a cada 1 s, então
+  um log aparece na tela em poucos segundos. Ajuste com `obskitpy.setup(..., flush_interval_ms=...)`.
+- **Aba escondida:** o navegador pausa a atualização quando a aba não está visível.
+
+!!! tip "Quando usar"
+    Realtime é para acompanhar um robô rodando agora, depurar uma execução ou ver se um deploy quebrou algo.
+    Para olhar o dia ou a semana, use períodos maiores e atualização mais calma.
+
+## O que o dash mostra
 
 ### Visão geral
 
@@ -70,7 +97,8 @@ navegador ──▶ nginx :8600 ──▶ /            página estática (dash/)
 
 Os arquivos ficam em `observability/dash/` e são seus (versione no git): `index.html`, `style.css`, `app.js`
 e `config.js` (que traz o nome do serviço). Edite à vontade; o `nginx` serve a pasta como está, então basta
-recarregar a página.
+recarregar a página. Para receber a versão mais nova do dash que vem no pacote (guardando a sua em `.bak`):
+`obskitpy dash update`.
 
 !!! note "Qual escolher?"
     Está começando ou só quer saber se o robô está bem? Use o **dash-obskitpy**.

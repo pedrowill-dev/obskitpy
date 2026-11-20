@@ -12,7 +12,8 @@ Todos os comandos aceitam `--dir PASTA` (padrão: `observability`) e devem ser e
 | `obskitpy up` | Sobe a stack, mostra o progresso, espera ficar saudável e **aplica o dashboard** (Kibana). Pode ser repetido à vontade. |
 | `obskitpy down [-v]` | Derruba a stack. `-v` apaga também os dados (volume do Elasticsearch). |
 | `obskitpy status` | Tabela dos containers (estado e portas) e os links dos dashboards. |
-| `obskitpy open [--ui kibana\|dash-obskitpy]` | Abre o dashboard no navegador (padrão: dash-obskitpy se existir, senão Kibana). |
+| `obskitpy open [--ui kibana\|dash-obskitpy] [--realtime]` | Abre o dashboard no navegador (padrão: dash-obskitpy se existir, senão Kibana). `--realtime` abre o dash já **ao vivo** (logs a cada 1 s). |
+| `obskitpy dash update` | Atualiza os arquivos do dash-obskitpy (`observability/dash/`) para a versão do pacote instalado; guarda os seus em `.bak`. |
 | `obskitpy run [--] COMANDO...` | **Roda o seu programa** já apontando para a stack (ex.: `obskitpy run python app.py`). Se a stack estiver parada, sobe antes. Sem comando, roda o `obskitpy_demo.py`. |
 | `obskitpy doctor` | Diagnostica Docker, Compose v2, memória do Docker e portas. |
 | `obskitpy dashboard apply` | Importa `observability/dashboard.ndjson` no Kibana (sobrescreve objetos com o mesmo id). |
@@ -34,6 +35,8 @@ algo pede a sua confirmação.
 | Porta ocupada ao subir | Escolhe a próxima livre, grava no `.env` e tenta de novo (uma porta por vez, se preciso). |
 | Comando com atalho ou erro de digitação (`start`, `ps`, `upp`) | Entende (`up`, `status`...) e avisa. Para os outros, sugere: "Você quis dizer…?". |
 | Pasta sem `observability/` | Oferece rodar o assistente `init` na hora. |
+| `otel-collector-config.yaml` de uma versão antiga | No `up`, atualiza (guarda `.bak`) e recria o Collector para enviar dados a cada 1 s. |
+| Arquivos do dash de uma versão antiga | O `up` avisa; `obskitpy dash update` atualiza. |
 | `init` numa pasta que já tem o obskitpy | Pergunta: subir como está, reconfigurar (guarda uma cópia em `observability.bak/`) ou cancelar. |
 | Collector ainda subindo / dados ainda indexando | Espera o Collector aceitar dados e os dados ficarem consultáveis antes de rodar o exemplo ou terminar o `run`. |
 | `obskitpy` fora do PATH | As dicas já aparecem como `uv run obskitpy ...` (ou `python -m obskitpy ...`). |
@@ -83,7 +86,7 @@ Versione tudo no git. O `.env` contém apenas nome, interface e portas, nenhum s
 import obskitpy
 ```
 
-### `obskitpy.setup(service_name, *, environment=None, version="0.0.0", metrics_interval_ms=10_000, instrument_requests=True)`
+### `obskitpy.setup(service_name, *, environment=None, version="0.0.0", flush_interval_ms=1_000, metrics_interval_ms=5_000, instrument_requests=True)`
 
 Configura traces, métricas e logs e devolve uma função `shutdown()`. Chame **uma vez**, no início do programa.
 
@@ -92,7 +95,8 @@ Configura traces, métricas e logs e devolve uma função `shutdown()`. Chame **
 | `service_name` | Vira `service.name`; precisa ser igual ao `OBSKITPY_SERVICE` do `.env`. |
 | `environment` | `deployment.environment` (padrão: variável `APP_ENV`, ou `local`). |
 | `version` | `service.version`. |
-| `metrics_interval_ms` | Intervalo de envio das métricas. |
+| `flush_interval_ms` | De quanto em quanto tempo logs e traces são enviados (padrão 1 s, para o [Realtime](dash-obskitpy.md#realtime) do dash). |
+| `metrics_interval_ms` | Intervalo de envio das métricas (padrão 5 s). |
 | `instrument_requests` | Cria um span para cada `requests.get/post/...` (precisa do extra `obskitpy[requests]`; sem ele é ignorado). |
 
 O que acontece por baixo:

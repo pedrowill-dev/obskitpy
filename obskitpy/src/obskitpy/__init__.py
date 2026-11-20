@@ -67,7 +67,7 @@ class _ErrorAttributes(logging.Filter):
 
 
 def setup(service_name: str, *, environment: str | None = None, version: str = "0.0.0",
-          metrics_interval_ms: int = 10_000, instrument_requests: bool = True):
+          flush_interval_ms: int = 1_000, metrics_interval_ms: int = 5_000, instrument_requests: bool = True):
     """Configura traces, métricas e logs. Devolve a função que os descarrega ao encerrar."""
     # O modo "otel" do Elasticsearch descarta histogramas cumulativos.
     os.environ.setdefault("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE", "delta")
@@ -92,7 +92,7 @@ def setup(service_name: str, *, environment: str | None = None, version: str = "
     })
 
     tracer_provider = TracerProvider(resource=resource)
-    tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(), schedule_delay_millis=flush_interval_ms))
     trace.set_tracer_provider(tracer_provider)
 
     meter_provider = MeterProvider(resource=resource, metric_readers=[
@@ -100,7 +100,7 @@ def setup(service_name: str, *, environment: str | None = None, version: str = "
     metrics.set_meter_provider(meter_provider)
 
     logger_provider = LoggerProvider(resource=resource)
-    logger_provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter(), schedule_delay_millis=flush_interval_ms))
     set_logger_provider(logger_provider)
 
     root = logging.getLogger()

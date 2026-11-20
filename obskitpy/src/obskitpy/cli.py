@@ -313,7 +313,21 @@ def apply_dashboard(obs: Path, env: dict[str, str], quiet: bool = False) -> int:
     return count
 
 
+def refresh_collector_config(obs: Path, env: dict[str, str]) -> bool:
+    """Se o otel-collector-config.yaml desta pasta é de uma versão antiga do obskitpy, atualiza (com .bak) e recria o Collector."""
+    target = obs / "otel-collector-config.yaml"
+    new = resources.files("obskitpy.templates").joinpath("otel-collector-config.yaml").read_text()
+    if not target.exists() or target.read_text() == new:
+        return False
+    shutil.copy2(target, target.with_name(target.name + ".bak"))
+    target.write_text(new)
+    ui.hint("Atualizei o otel-collector-config.yaml (envio ao Elasticsearch a cada 1 s); a versão anterior ficou em .bak.")
+    compose(obs, env, ["up", "-d", "--force-recreate", "otel-collector"])
+    return True
+
+
 def bring_up(obs: Path, env: dict[str, str]) -> None:
+    refresh_collector_config(obs, env)
     parts = ["Elasticsearch", "Collector"] + (["Kibana"] if uses_kibana(env) else []) + (["dash-obskitpy"] if uses_dash(env) else [])
     with ui.Spinner(f"Subindo {', '.join(parts[:-1])} e {parts[-1]}") as sp:
         try:
@@ -536,7 +550,9 @@ def cmd_up(args) -> None:
     bring_up(obs, env)
     ui.out()
     summary_box(env)
-    ui.out(f"\n  {ui.paint('Abrir no navegador:', 'gray')} {cmd('open')}   {ui.paint('· rodar seu código:', 'gray')} {cmd('run python app.py')}\n")
+    if uses_dash(env) and dash_outdated(obs):
+        ui.hint(f"Há uma versão mais nova do dash-obskitpy neste pacote: rode `{cmd('dash update')}` (guardo a sua em .bak).")
+    ui.out(f"\n  {ui.paint('Abrir no navegador:', 'gray')} {cmd('open')}   {ui.paint('· tempo real:', 'gray')} {cmd('open --realtime')}   {ui.paint('· rodar seu código:', 'gray')} {cmd('run python app.py')}\n")
 
 
 def cmd_down(args) -> None:
@@ -583,7 +599,12 @@ def cmd_status(args) -> None:
 
 def cmd_open(args) -> None:
     env = read_env(Path(args.dir) / ".env")
-    if args.ui == "kibana":
+    if args.realtime:
+        if not uses_dash(env):
+            raise CliError("o modo Realtime é do dash-obskitpy, e este projeto usa só o Kibana.",
+                           hint=f"Recrie com `{cmd('init --force --local ambos')}` para ter os dois.")
+        url = dash_url(env) + "/#logs?realtime"
+    elif args.ui == "kibana":
         need_kibana(env)
         url = dashboard_url(env)
     elif args.ui == "dash-obskitpy":
@@ -651,6 +672,35 @@ def cmd_doctor(args) -> None:
     ui.ok(ui.paint("Tudo certo para rodar o obskitpy.", "bold"))
 
 
+def dash_files() -> dict[str, bytes]:
+    src = resources.files("obskitpy.templates").joinpath("dash")
+    return {i.name: i.read_bytes() for i in src.iterdir() if i.is_file() and i.name != "config.js"}
+
+
+def dash_outdated(obs: Path) -> list[str]:
+    return [n for n, data in dash_files().items() if not (obs / "dash" / n).exists() or (obs / "dash" / n).read_bytes() != data]
+
+
+def cmd_dash_update(args) -> None:
+    """Atualiza os arquivos do dash-obskitpy (observability/dash/) para a versão do pacote instalado."""
+    obs = Path(args.dir)
+    env = read_env(obs / ".env")
+    if not uses_dash(env):
+        raise CliError("este projeto não usa o dash-obskitpy.", hint=f"Recrie com `{cmd('init --force --local dash-obskitpy')}`.")
+    changed = dash_outdated(obs)
+    if not changed:
+        ui.ok("O dash-obskitpy já está na versão do pacote instalado.")
+        return
+    files = dash_files()
+    for name in changed:
+        target = obs / "dash" / name
+        if target.exists():
+            shutil.copy2(target, target.with_name(target.name + ".bak"))  # sua versão fica guardada
+        target.write_bytes(files[name])
+    ui.ok(f"dash-obskitpy atualizado {ui.paint('(' + ', '.join(changed) + ')', 'gray')}")
+    ui.hint("Recarregue a página (Ctrl/⌘+Shift+R). Suas versões anteriores ficaram em *.bak dentro de observability/dash/.")
+
+
 def cmd_dashboard_apply(args) -> None:
     obs = Path(args.dir)
     env = read_env(obs / ".env")
@@ -699,7 +749,7 @@ class FriendlyParser(argparse.ArgumentParser):
         super().error(message)
 
 
-COMMANDS = ["init", "up", "down", "status", "open", "run", "doctor", "dashboard"]
+COMMANDS = ["init", "up", "down", "status", "open", "run", "doctor", "dash", "dashboard"]
 
 
 def normalize_argv(argv: list[str]) -> list[str]:
@@ -747,9 +797,16 @@ def build_parser() -> argparse.ArgumentParser:
     command("status", cmd_status, "mostra os containers e o link do dashboard")
     opn = command("open", cmd_open, "abre o dashboard no navegador")
     opn.add_argument("--ui", choices=("kibana", "dash-obskitpy"), help="qual abrir (padrão: dash-obskitpy se existir, senão Kibana)")
+    opn.add_argument("--realtime", action="store_true", help="abre o dash-obskitpy já em tempo real (logs ao vivo, atualizando a cada 1 s)")
     command("doctor", cmd_doctor, "diagnostica Docker, Compose, memória e portas")
     run = command("run", cmd_run, "roda o seu programa enviando os dados para a stack (sobe a stack se preciso)")
     run.add_argument("cmd", nargs=argparse.REMAINDER, help="o comando, ex.: python app.py")
+
+    dsh = sub.add_parser("dash", help="mantém o dash-obskitpy (observability/dash/)")
+    dshsub = dsh.add_subparsers(dest="action", required=True)
+    upd = dshsub.add_parser("update", help="atualiza os arquivos do dash para a versão do pacote instalado")
+    upd.add_argument("--dir", default=DEFAULT_DIR)
+    upd.set_defaults(fn=cmd_dash_update)
 
     dash = sub.add_parser("dashboard", help="sincroniza o dashboard com o Kibana")
     dsub = dash.add_subparsers(dest="action", required=True)

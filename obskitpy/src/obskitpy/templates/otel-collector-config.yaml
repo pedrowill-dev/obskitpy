@@ -16,6 +16,8 @@ exporters:
     metrics_index: metrics-generic.otel-default
     mapping:
       mode: otel
+    flush:
+      interval: 1s   # o padrão é 30 s: com isso o dash em tempo real só veria os dados em lotes
 
 service:
   pipelines:

@@ -45,6 +45,10 @@ http://localhost:5601 → *Dashboards* → `meu-servico - Observabilidade`.
 
 ![dash-obskitpy](docs/images/dash-overview.png)
 
+Período e atualização editáveis (segundos, minutos, horas) e o atalho **Realtime** (`obskitpy open --realtime`) para ver os logs ao vivo:
+
+![Realtime](docs/images/dash-realtime.png)
+
 **Kibana** — saúde do robô — logs, erros por tipo e origem, duração de cada operação, dashboard base gerado pelo `obskitpy init`:
 
 ![Painéis de saúde do robô](docs/images/dashboard-saude.png)

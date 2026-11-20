@@ -322,3 +322,65 @@ def test_wait_data_polls_until_service_has_data(monkeypatch):
     monkeypatch.setattr(cli.urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setattr(cli.time, "sleep", lambda s: None)
     assert cli.wait_data({"ES_PORT": "1", "OBSKITPY_SERVICE": "a"}, timeout=30) is True and calls["n"] == 3
+
+
+def test_setup_flushes_fast_for_realtime():
+    import inspect
+    import obskitpy
+    params = inspect.signature(obskitpy.setup).parameters
+    assert params["flush_interval_ms"].default == 1000 and params["metrics_interval_ms"].default == 5000
+
+
+def test_open_realtime_needs_dash(tmp_path):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--local", "kibana", "--yes"])
+    with pytest.raises(SystemExit):
+        main(["open", "--realtime", "--dir", str(obs)])
+
+
+def test_open_realtime_url(tmp_path, monkeypatch, capsys):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--local", "dash-obskitpy", "--yes"])
+    opened = []
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    main(["open", "--realtime", "--dir", str(obs)])
+    assert opened and opened[0].endswith("/#logs?realtime")
+
+
+def test_dash_update_replaces_outdated_files_keeping_backup(tmp_path):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--local", "dash-obskitpy", "--yes"])
+    (obs / "dash" / "app.js").write_text("// versão antiga")
+    assert cli.dash_outdated(obs) == ["app.js"]
+    main(["dash", "update", "--dir", str(obs)])
+    assert (obs / "dash" / "app.js.bak").read_text() == "// versão antiga"
+    assert "realtime" in (obs / "dash" / "app.js").read_text().lower() and cli.dash_outdated(obs) == []
+    main(["dash", "update", "--dir", str(obs)])  # já atualizado: não faz nada
+    assert 'window.OBSKITPY' in (obs / "dash" / "config.js").read_text()
+
+
+def test_dash_app_supports_custom_spans_and_realtime():
+    from importlib import resources
+    js = resources.files("obskitpy.templates").joinpath("dash/app.js").read_text()
+    for needle in ("segundos", "setRealtime", "realtime", "dash.refresh", "bucket("):
+        assert needle in js
+
+
+def test_collector_config_flushes_every_second():
+    from importlib import resources
+    text = resources.files("obskitpy.templates").joinpath("otel-collector-config.yaml").read_text()
+    assert "flush:" in text and "interval: 1s" in text
+
+
+def test_refresh_collector_config_updates_old_file(tmp_path, monkeypatch):
+    obs = tmp_path / "observability"
+    main(["init", "--dir", str(obs), "--service", "app", "--yes"])
+    cfg = obs / "otel-collector-config.yaml"
+    cfg.write_text("# antigo\n")
+    recreated = []
+    monkeypatch.setattr(cli, "compose", lambda *a, **k: recreated.append(a[2]))
+    env = cli.read_env(obs / ".env")
+    assert cli.refresh_collector_config(obs, env) is True
+    assert (obs / "otel-collector-config.yaml.bak").read_text() == "# antigo\n"
+    assert "flush:" in cfg.read_text() and recreated == [["up", "-d", "--force-recreate", "otel-collector"]]
+    assert cli.refresh_collector_config(obs, env) is False  # já atualizado
