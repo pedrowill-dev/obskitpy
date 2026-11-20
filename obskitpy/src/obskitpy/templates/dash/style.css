@@ -153,7 +153,9 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}form.inline i
 .ed-insp label{display:grid;gap:5px;font-size:12.5px;color:var(--muted)}.ed-insp label small{color:var(--faint)}
 .ed-insp input,.ed-insp select,.ed-insp textarea{background:var(--bg2);border:1px solid var(--border);border-radius:9px;padding:7px 10px;color:var(--text);font:inherit;font-size:13.5px;outline:none;width:100%;min-width:0}
 .ed-insp input:focus,.ed-insp select:focus,.ed-insp textarea:focus{border-color:var(--teal)}.ed-insp textarea{resize:vertical}
-.chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:12px}.chip{background:var(--bg2);border:1px solid var(--border);border-radius:999px;padding:2px 9px;font:12px var(--mono);color:var(--amber);cursor:pointer}.chip:hover{border-color:var(--amber)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:12px}.vchip{background:var(--bg2);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font:12px var(--mono);color:var(--amber);cursor:pointer;text-transform:none;letter-spacing:0}.vchip:hover,.vchip:focus-visible{border-color:var(--amber);background:rgba(255,184,28,.1);outline:none}
+.vtip{position:fixed;z-index:1000;max-width:260px;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.5;background:#1b2845;color:var(--text);border:1px solid var(--amber);box-shadow:0 12px 30px rgba(0,0,0,.6);pointer-events:none}.vtip span{color:var(--muted)}.vtip code{color:var(--amber);font-family:var(--mono)}
+.preview{display:grid;gap:4px;margin:0 0 14px;padding:10px 12px;border-radius:10px;border:1px dashed var(--border);background:var(--bg2)}.preview b{font-size:13.5px}.preview p{margin:0;font-size:13px;color:var(--muted);white-space:pre-wrap;word-break:break-word}
 
 .ed-canvas{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:14px;outline:none;cursor:grab;touch-action:none;
   background-color:#080e1c;background-image:radial-gradient(circle,rgba(150,170,210,.22) 1.2px,transparent 1.6px);background-size:24px 24px}

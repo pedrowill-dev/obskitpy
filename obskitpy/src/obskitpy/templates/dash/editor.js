@@ -14,6 +14,16 @@
     "action.notify": ic('<path d="M21 3 10.5 13.5M21 3l-7 18-3.5-7.5L3 10l18-7Z"/>'),
   };
   const PLUS = ic('<path d="M12 5v14M5 12h14"/>'), MINUS = ic('<path d="M5 12h14"/>'), FIT = ic('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>');
+  // o que cada variável de mensagem traz (texto do balão) e um exemplo para a prévia
+  const VAR_HELP = {
+    service: ["O nome da automação (serviço) que gerou o evento.", () => (window.__svc || "meu-robo")],
+    value: ["O número medido pelo gatilho na janela: quantidade de erros, de falhas ou de dados recebidos.", () => "6"],
+    window: ["A janela de tempo avaliada, em minutos.", () => "10"],
+    automation: ["O nome desta automação, como você escreveu no topo do editor.", () => (window.__auto || "Minha automação")],
+    event: ["O que aconteceu: disparou, lembrete, normalizou, agendado ou teste.", () => "disparou"],
+    time: ["Data e hora em que o aviso foi gerado.", () => new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", "")],
+  };
+  const sample = (text) => text.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (VAR_HELP[k] ? VAR_HELP[k][1]() : m));
   const uid = () => "n" + Math.random().toString(36).slice(2, 9);
 
   function mount(root, api) {
@@ -203,7 +213,8 @@
         else input = `<input id="${id}" data-f="${f.name}" value="${esc(v ?? "")}" maxlength="${f.max || 120}">`;
         return `<label>${esc(f.label)}${f.help ? ` <small>(${esc(f.help)})</small>` : ""}${input}</label>`;
       };
-      const chips = n.type === "action.notify" ? `<div class="chips"><span class="mono hint">Inserir variável:</span>${S.variables.map((v) => `<button type="button" class="chip" data-var="${v}">{{${v}}}</button>`).join("")}</div>` : "";
+      const chips = n.type === "action.notify" ? `<div class="chips"><span class="mono hint">Variáveis (passe o mouse para ver o que trazem; clique para inserir):</span>${S.variables.map((v) => `<button type="button" class="vchip" data-var="${v}" aria-label="${esc(VAR_HELP[v]?.[0] || v)}">{{${v}}}</button>`).join("")}</div>
+        <div class="preview"><span class="mono hint">Prévia com valores de exemplo</span><b id="pv-title"></b><p id="pv-text"></p></div>` : "";
       box.innerHTML = `<h3><span class="en-ic ${ACCENT[t.group]}">${ICON[n.type]}</span> ${esc(t.label)}</h3><p class="mono hint">${esc(t.help)}</p>
         <form id="insp-form" onsubmit="return false">${t.fields.map(field).join("")}</form>${chips}
         ${admin() ? '<button class="btn small ghost danger" data-a="del-node">Remover etapa</button>' : ""}`;
@@ -213,13 +224,31 @@
         inp.addEventListener("input", upd); inp.addEventListener("change", upd); inp.addEventListener("focus", () => { S.lastField = inp; });
         if (!admin()) inp.disabled = true;
       });
+      const preview = () => { const t = $("#pv-title", box); if (!t) return; window.__svc = n.config.service || api.service(); window.__auto = S.cur.name;
+        t.textContent = sample(n.config.title || ""); $("#pv-text", box).textContent = sample(n.config.message || ""); };
+      box.querySelectorAll("[data-f]").forEach((inp) => inp.addEventListener("input", preview)); preview();
+      box.querySelectorAll("[data-var]").forEach((b) => {
+        const show = () => tip(b, VAR_HELP[b.dataset.var]); b.addEventListener("mouseenter", show); b.addEventListener("focus", show);
+        b.addEventListener("mouseleave", hideTip); b.addEventListener("blur", hideTip);
+      });
       box.querySelectorAll("[data-var]").forEach((b) => b.addEventListener("click", () => {
         const inp = S.lastField && box.contains(S.lastField) && ["INPUT", "TEXTAREA"].includes(S.lastField.tagName) ? S.lastField : box.querySelector("textarea");
         const tag = `{{${b.dataset.var}}}`, i = inp.selectionStart ?? inp.value.length;
         inp.value = inp.value.slice(0, i) + tag + inp.value.slice(inp.selectionEnd ?? i); inp.focus(); inp.setSelectionRange(i + tag.length, i + tag.length); inp.dispatchEvent(new Event("input"));
       }));
     }
-    function select(sel) { S.sel = sel; markSel(); drawEdges(); inspector(); }
+    /* balão flutuante (posição fixa: não é cortado pelo painel) */
+    let tipEl = null;
+    function tip(anchor, info) {
+      if (!info) return; hideTip();
+      tipEl = document.createElement("div"); tipEl.className = "vtip";
+      tipEl.innerHTML = `${esc(info[0])}<br><span>Exemplo: <code>${esc(info[1]())}</code></span>`; document.body.appendChild(tipEl);
+      const r = anchor.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+      tipEl.style.left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), innerWidth - w - 8) + "px";
+      tipEl.style.top = (r.top - h - 10 < 8 ? r.bottom + 10 : r.top - h - 10) + "px";
+    }
+    function hideTip() { if (tipEl) { tipEl.remove(); tipEl = null; } }
+    function select(sel) { hideTip(); S.sel = sel; markSel(); drawEdges(); inspector(); }
 
     /* ---------- edição ---------- */
     function addNode(type, at) {
