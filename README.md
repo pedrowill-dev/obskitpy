@@ -100,4 +100,4 @@ autenticação e TLS.
 
 ## Licença
 
-Defina a licença do projeto antes de publicar (ex.: adicione um arquivo `LICENSE`).
+[MIT](LICENSE) © 2026 Pedro França.
