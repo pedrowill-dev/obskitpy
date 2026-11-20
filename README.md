@@ -40,7 +40,7 @@ http://localhost:5601 → *Dashboards* → `meu-servico - Observabilidade`.
 
 ## Como funciona
 
-![Como o obskitpy funciona: automações Python → obskitpy → Elasticsearch → dash-obskitpy ou Kibana](docs/images/como-funciona.png)
+![Como o obskitpy funciona: automações Python → obskitpy → Elasticsearch → dash-obskitpy ou Kibana](docs/images/como-funciona.gif)
 
 1. Sua automação (RPA, ETL, integração) roda como sempre e chama `obskitpy.setup("meu-servico")`.
 2. O obskitpy captura **logs, métricas e traces** (e os erros, com tipo e origem) e envia por OpenTelemetry.

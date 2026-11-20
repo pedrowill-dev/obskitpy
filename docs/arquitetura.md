@@ -2,7 +2,7 @@
 
 ## Visão geral
 
-![Como o obskitpy funciona](images/como-funciona.png)
+![Como o obskitpy funciona](images/como-funciona.gif)
 
 ```
  seu processo Python                 docker compose (observability/)
