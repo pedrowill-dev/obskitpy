@@ -943,6 +943,9 @@ def cmd_portal_enable(args) -> None:
                 f"OBSKITPY_ADMIN_PASSWORD={admin_pw}",
                 f"OBSKITPY_PIP_SPEC={spec}", ""]), encoding="utf-8")
             portal_env.chmod(0o600)
+        else:  # já existia: o portal acompanha a versão instalada (a menos que --pip-spec diga outra coisa)
+            spec = args.pip_spec or f"obskitpy[portal]=={__version__}"
+            set_env_keys(portal_env, {"OBSKITPY_PIP_SPEC": spec})
         if args.dev_source:  # desenvolvimento do obskitpy: instala o portal a partir do código local
             (obs / "docker-compose.override.yml").write_text(
                 f'services:\n  portal:\n    volumes:\n      - "{Path(args.dev_source).resolve()}:/pkg:ro"\n')
