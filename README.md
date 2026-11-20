@@ -31,6 +31,20 @@ shutdown()                                   # descarrega os dados pendentes
 
 Abra http://localhost:5601 → *Dashboards* → `meu-servico - Observabilidade`.
 
+## Como fica
+
+Saúde do robô — logs, erros por tipo e origem, duração de cada operação, tudo gerado pelo `obskit init`:
+
+![Painéis de saúde do robô](docs/images/dashboard-saude.png)
+
+Dados de negócio no mesmo dashboard (exemplo: notícias da Prefeitura de SP extraídas e gravadas no Elasticsearch):
+
+![Painéis com os dados extraídos](docs/images/dashboard-dados.png)
+
+De um erro ao trace completo, pelo `trace_id` — veja qual operação falhou e quanto cada uma levou:
+
+![Trace de uma execução com erro no Discover](docs/images/investigar-trace.png)
+
 ## O que você ganha
 
 - **Dashboard pronto** com logs por severidade, erros por tipo e origem (`arquivo:função:linha`), execuções,

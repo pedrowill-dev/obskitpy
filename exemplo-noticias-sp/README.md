@@ -4,6 +4,8 @@ Robô que extrai as notícias de https://prefeitura.sp.gov.br/noticias, grava no
 e mostra tudo num dashboard do Kibana: dados extraídos **e** saúde do robô (logs, traces, métricas, erros).
 Serve de exemplo de como plugar o [`obskit`](../obskit/README.md) num projeto Python.
 
+![Dashboard completo](../docs/images/dashboard-completo.png)
+
 ## Como os dados são obtidos
 
 A lista "Todas as notícias" da página é montada no navegador por JavaScript, então o HTML da página vem sem notícias.

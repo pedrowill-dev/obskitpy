@@ -16,12 +16,18 @@ Todos os painéis filtram por `resource.attributes.service.name : "<servico>"`.
 | Erros por tipo e origem | logs | `error.type` × `error.origin` (`arquivo:função:linha`) com contagem. |
 | Erros (logs) | logs | Busca salva com os erros, `body.text`, tipo, origem e `trace_id`. |
 
+![Painéis do dashboard base](images/dashboard-saude.png)
+
 ### Investigando um erro
 
 1. No painel **Erros (logs)** ou em **Erros por tipo e origem**, identifique o tipo e a origem.
 2. Copie o `trace_id` da linha do erro.
 3. No *Discover*, escolha a data view `<servico> - Traces` e filtre por `trace_id : "<id>"`:
    você vê todos os spans daquela execução, com duração e qual deles falhou.
+
+   ![Spans de uma execução com erro, filtrados por trace_id](images/investigar-trace.png)
+
+   Os spans com `status.code: Error` mostram onde a falha ocorreu (aqui, `GET` → `dia.baixar` → `dia.processar`).
 4. Abra o documento do log para ver `error.chain` (cadeia de chamadas) e `exception.stacktrace`.
 
 ## Evoluindo o dashboard
@@ -59,6 +65,8 @@ Helpers disponíveis em `obskit.dashboard`: `agg`, `terms`, `date_histogram`, `m
 `table_vis`, `search_source`, `ref`, `build`, `to_ndjson`.
 
 ## Misturando dados de negócio
+
+![Painéis com dados de negócio](images/dashboard-dados.png)
 
 Se o robô grava o que extrai no Elasticsearch (como o exemplo das notícias grava em `noticias-sp`), crie uma data
 view para esse índice e monte painéis ao lado dos de saúde. O resultado é um único dashboard que responde tanto

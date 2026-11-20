@@ -71,6 +71,8 @@ Rode o script e abra o dashboard (`obskit open` ou o link impresso pelo `up`):
 http://localhost:5601/app/dashboards#/view/<servico>-observability
 ```
 
+![Dashboard base com os painéis de saúde](images/dashboard-saude.png)
+
 Os primeiros dados levam alguns segundos para ficar pesquisáveis no Elasticsearch — se os painéis estiverem vazios,
 aguarde ~30 s e atualize. Confira também a janela de tempo (canto superior direito): o padrão é *Last 24 hours*.
 
