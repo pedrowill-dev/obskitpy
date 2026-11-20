@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "obskit"
+version = "0.1.0"
+description = "Observabilidade (OpenTelemetry + Elasticsearch + Kibana) para qualquer projeto Python, via CLI."
+requires-python = ">=3.10"
+dependencies = [
+    "opentelemetry-api==1.27.0",
+    "opentelemetry-sdk==1.27.0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.27.0",
+]
+
+[project.optional-dependencies]
+requests = ["opentelemetry-instrumentation-requests==0.48b0", "setuptools==75.6.0"]
+test = ["pytest"]
+
+[project.scripts]
+obskit = "obskit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+obskit = ["templates/*"]

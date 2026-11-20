@@ -1,0 +1,347 @@
+[
+ {
+  "availableLanguages": [
+   "pt-BR"
+  ],
+  "contentFields": [
+   {
+    "contentFieldValue": {},
+    "dataType": "image",
+    "fieldReference": "image",
+    "label": "Imagem da notícia",
+    "name": "Image01172192",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": "Vera Holtz, Negra Li, Roberta Campos e Céu são alguns dos nomes;  evento oferece atividades gratuitas nos dias 25, 27, 28 e 29 de novembro"
+    },
+    "dataType": "string",
+    "fieldReference": "description",
+    "inputControl": "text",
+    "label": "Resumo da notícia",
+    "name": "Text98370261",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": "<p dir=\"ltr\">Com nomes como Vera Holtz, Ná Ozzetti, Negra Li, Roberta Campos e Céu, a Prefeitura realiza, nos dias 25, 27, 28 e 29 de novembro, a sexta edição do Festival Mário de Andrade, com o tema “A cidade lê, a cidade lida”. O evento ocupa os espaços internos da Biblioteca Mário de Andrade, a Rua da Consolação e a Praça Dom José Gaspar, com uma programação gratuita, que inclui shows, saraus, rodas de conversa, caminhadas urbanas, feiras de livros e gastronomia, exposições e intervenções artísticas.</p>\n\n<p dir=\"ltr\">O festival terá uma pré-abertura na quarta-feira (25), com palestras no Auditório Rubens Borba de Moraes. Às 11h30, Fernando Bravo Arenas fala sobre as bibliotecas públicas do Chile. Às 15h, Totó Parente (secretário de Cultura e Economia Criativa), Santiago Trujillo (secretário de Cultura de Bogotá, Colômbia) e Gabriela Ricardes (ministra de Cultura da Cidade de Buenos Aires, Argentina) conversam sobre “Políticas públicas nas capitais latino-americanas”.</p>\n\n<p dir=\"ltr\">No dia 27 (sexta-feira), data oficial do início do evento, o Palco Música recebe, a partir das 18h, a Festa Balaio Groove, comandada pela DJ Evelyn Cristina. Em seguida, às 19h30, o multiartista baiano Tiganá Santana apresenta o show de abertura “Afro-Sambas 60 anos”, em homenagem ao álbum de Baden Powell e Vinícius de Moraes, com participação especial do violonista João Camarero. O espetáculo celebra as seis décadas do lançamento do disco.</p>\n\n<p dir=\"ltr\">A relação entre literatura, memória e paladar ganha destaque na manhã de sábado (28), das 10h às 11h, no Terraço da Biblioteca, com a “Performance Gastroliterária: Menu Desvairado – O cardápio de Mário de Andrade”. Conduzido por Ariana Gazel Lenti (DasTurca) e Paula de Oliveira Feliciano, o café da manhã performático inspira-se na coleção pessoal de cardápios reunida pelo escritor modernista e em referências de sua vida e obra. Além disso, uma Feira Gastronômica ocupa a Praça Dom José Gaspar durante todo o sábado e domingo, das 10h às 21h.</p>\n\n<p dir=\"ltr\">Outro destaque da programação é a participação de Vera Holtz em uma leitura cênica da poesia de Adélia Prado, no Auditório Rubens Borba de Moraes, tanto no sábado (28) quanto no domingo (29), às 20h. A atriz apresenta uma leitura dramática especialmente preparada para o festival, que mergulha na delicadeza, no cotidiano e na potência da obra de uma das maiores poetas brasileiras. A entrada é gratuita, com distribuição de ingressos uma hora antes de cada sessão.</p>\n\n<p dir=\"ltr\"><strong>Destaques musicais no Festival Mário de Andrade</strong></p>\n\n<p dir=\"ltr\">A curadoria musical do festival atravessa diferentes vertentes da música brasileira e negra contemporânea ao longo do fim de semana. No sábado (28), a programação começa com Ná Ozzetti e Luiz Tatit, às 11h, seguidos por Assucena, às 13h, Allan Abbadia, às 15h, Thobias da Vai-Vai, às 17h, Negra Li com Rincón Sapiência, às 19h, e a festa latina ¡SÚBETE!, às 20h30.</p>\n\n<p dir=\"ltr\">No domingo (29), o festival terá a Orquestra Paulistana de Viola Caipira, às 11h, Roberta Campos, às 13h, Núbia com participação de Céu, às 15h, e Evinha, às 17h. O encerramento fica por conta da cantora franco-senegalesa anaiis, que sobe ao palco ao lado do Grupo Cosmo e de Luedji Luna, às 19h, e da dupla londrina Errol &amp; Alex Rita, às 21h30.</p>\n\n<p dir=\"ltr\"><strong>Feira do Livro e literatura da cidade</strong></p>\n\n<p dir=\"ltr\">O fim de semana do festival também terá a Feira do Livro na Rua da Consolação, das 10h às 19h, com 34 expositores. O espaço é uma iniciativa pensada para que editoras de menor porte se conectem com o público paulistano, que poderá conhecer e adquirir publicações diversas, descobrir novos projetos editoriais e encontrar produções que circulam para além dos canais tradicionais.</p>\n\n<p dir=\"ltr\">Entre as atrações que celebram a literatura na cidade, a “Caminhada: Leitura na planta dos pés”, com Renato Hofer e Silvia Brunello, do Arquipélagos Urbanos, chama a atenção pelo percurso de 7 km, que começa na Biblioteca Narbal Fontes, às 9h, e termina na Biblioteca Mário de Andrade, às 12h. O passeio acontece no sábado (28), com paradas para observar, escutar e ler a cidade a partir de seus caminhos, paisagens e histórias, reconhecendo lugares que dialogam com personagens e escritos de Mário de Andrade.</p>\n\n<p dir=\"ltr\"><a href=\"https://prefeitura.sp.gov.br/web/cultura/w/prefeitura-promove-o-vi-festival-m%C3%A1rio-de-andrade-com-programa%C3%A7%C3%A3o-gratuita-de-m%C3%BAsica-literatura-e-gastronomia\">Saiba mais</a></p>"
+    },
+    "dataType": "string",
+    "fieldReference": "content",
+    "label": "Conteúdo da notícia",
+    "name": "RichText14595496",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": "false"
+    },
+    "dataType": "boolean",
+    "fieldReference": "hideTitleAndDescription",
+    "inputControl": "checkbox",
+    "label": "Esconder título e resumo",
+    "name": "Checkbox29697924",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": ""
+    },
+    "dataType": "string",
+    "fieldReference": "altTitle",
+    "inputControl": "text",
+    "label": "Título Alternativo",
+    "name": "Text26685866",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": ""
+    },
+    "dataType": "string",
+    "fieldReference": "altDescription",
+    "inputControl": "text",
+    "label": "Resumo Alternativo",
+    "name": "Text49353419",
+    "nestedContentFields": [],
+    "repeatable": false
+   }
+  ],
+  "contentStructureId": 79914,
+  "customFields": [
+   {
+    "customValue": {
+     "data": ""
+    },
+    "dataType": "Text",
+    "name": "newsOriginalSourceID"
+   },
+   {
+    "customValue": {
+     "data": ""
+    },
+    "dataType": "Text",
+    "name": "newsOldLink"
+   }
+  ],
+  "dateCreated": "2026-11-19T21:23:55Z",
+  "dateModified": "2026-11-19T21:23:55Z",
+  "datePublished": "2026-11-19T21:23:00Z",
+  "description": "",
+  "externalReferenceCode": "d57f0e67-2803-638e-6836-fcf0cc43f8ce",
+  "friendlyUrlPath": "m%C3%BAsica-literatura-e-arte-tomam-conta-do-centro-no-festival-m%C3%A1rio-de-andrade-1",
+  "id": 62856586,
+  "key": "62856584",
+  "keywords": [],
+  "neverExpire": true,
+  "numberOfComments": 0,
+  "priority": 0.0,
+  "siteId": 34276,
+  "structuredContentFolderId": 0,
+  "subscribed": false,
+  "taxonomyCategoryBriefs": [],
+  "title": "Música, literatura e arte tomam conta do Centro no Festival Mário de Andrade",
+  "uuid": "d57f0e67-2803-638e-6836-fcf0cc43f8ce"
+ },
+ {
+  "availableLanguages": [
+   "pt-BR"
+  ],
+  "contentFields": [
+   {
+    "contentFieldValue": {},
+    "dataType": "image",
+    "fieldReference": "image",
+    "label": "Imagem da notícia",
+    "name": "Image01172192",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": ""
+    },
+    "dataType": "string",
+    "fieldReference": "description",
+    "inputControl": "text",
+    "label": "Resumo da notícia",
+    "name": "Text98370261",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": "<p><strong>16h30 - Reunião com embaixador do Japão no Brasil</strong><br>\nO prefeito Ricardo Nunes recebeu Yasushi Noguchi, embaixador do Japão no Brasil, em seu gabinete. A reunião contou com as presenças dos secretários Rodrigo Goulart (Desenvolvimento Econômico e Trabalho) e Ângela Gandra (Relações Internacionais), além do chefe de gabinete do prefeito, Vítor Sampaio, e da coordenadora de Assuntos Bilaterais e Internacionais, Stella Bonifácio.&nbsp;</p>"
+    },
+    "dataType": "string",
+    "fieldReference": "content",
+    "label": "Conteúdo da notícia",
+    "name": "RichText14595496",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": "false"
+    },
+    "dataType": "boolean",
+    "fieldReference": "hideTitleAndDescription",
+    "inputControl": "checkbox",
+    "label": "Esconder título e resumo",
+    "name": "Checkbox29697924",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": ""
+    },
+    "dataType": "string",
+    "fieldReference": "altTitle",
+    "inputControl": "text",
+    "label": "Título Alternativo",
+    "name": "Text26685866",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": ""
+    },
+    "dataType": "string",
+    "fieldReference": "altDescription",
+    "inputControl": "text",
+    "label": "Resumo Alternativo",
+    "name": "Text49353419",
+    "nestedContentFields": [],
+    "repeatable": false
+   }
+  ],
+  "contentStructureId": 79914,
+  "customFields": [
+   {
+    "customValue": {
+     "data": ""
+    },
+    "dataType": "Text",
+    "name": "newsOriginalSourceID"
+   },
+   {
+    "customValue": {
+     "data": ""
+    },
+    "dataType": "Text",
+    "name": "newsOldLink"
+   }
+  ],
+  "dateCreated": "2026-11-19T21:20:49Z",
+  "dateModified": "2026-11-19T21:36:54Z",
+  "datePublished": "2026-11-19T21:20:00Z",
+  "description": "",
+  "externalReferenceCode": "2f420867-2dac-8955-dd8b-7533d56a9dfd",
+  "friendlyUrlPath": "dia-do-prefeito-ricardo-nunes-671",
+  "id": 62857186,
+  "key": "62857184",
+  "keywords": [
+   "dia do prefeito"
+  ],
+  "neverExpire": true,
+  "numberOfComments": 0,
+  "priority": 0.0,
+  "siteId": 34276,
+  "structuredContentFolderId": 152861,
+  "subscribed": false,
+  "taxonomyCategoryBriefs": [],
+  "title": "Dia do prefeito Ricardo Nunes",
+  "uuid": "b0e6b511-e9c6-4893-6ef4-cc51ad281c5a"
+ },
+ {
+  "availableLanguages": [
+   "pt-BR"
+  ],
+  "contentFields": [
+   {
+    "contentFieldValue": {
+     "image": {
+      "contentType": "Document",
+      "contentUrl": "/documents/34276/0/Matricula-em-creches.png/32ab62f2-f43c-5bb3-9dde-6ef81116c969?version=1.0&t=1795121223699",
+      "description": "",
+      "encodingFormat": "image/png",
+      "externalReferenceCode": "32ab62f2-f43c-5bb3-9dde-6ef81116c969",
+      "fileExtension": "png",
+      "id": 62856108,
+      "scopeExternalReferenceCode": "02e6c38d-1f1b-bf1c-170f-bedfee2a8185",
+      "sizeInBytes": 905241,
+      "title": "Matricula-em-creches.png"
+     }
+    },
+    "dataType": "image",
+    "fieldReference": "image",
+    "label": "Imagem da notícia",
+    "name": "Image01172192",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": "São Paulo amplia oportunidades de aprendizagem desde os primeiros anos de vida. Com mais de 300 mil crianças matriculadas na Educação Infantil, capital mantém fila de creches zerada pelo sexto ano consecutivo"
+    },
+    "dataType": "string",
+    "fieldReference": "description",
+    "inputControl": "text",
+    "label": "Resumo da notícia",
+    "name": "Text98370261",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": "<p style=\"margin-bottom:11px\">A trajetória educacional começa muito antes das primeiras letras. N<strong>os primeiros anos de vida, o cérebro passa por um intenso processo de desenvolvimento, com a formação de mais de 1 milhão de novas conexões neuronais por segundo</strong>, segundo o UNICEF. Nesse período, as brincadeiras, as interações e os estímulos são fundamentais para estabelecer as bases da aprendizagem e das habilidades cognitivas, sociais e emocionais. <strong>Em São Paulo, o trabalho desenvolvido nas creches da Rede Municipal de Ensino também é reconhecido pelas famílias, que atribuíram nota média 9,7 às unidades em <a href=\"https://prefeitura.sp.gov.br/w/datafolha-creches-da-prefeitura-recebem-nota-9-7-dos-pais-e-respons%C3%A1veis-das-crian%C3%A7as-matriculadas &nbsp;\">pesquisa realizada pelo Datafolha.</a></strong></p>\n\n<p>A matrícula em creches integra as prioridades da <strong>Prefeitura de São Paulo </strong>e o trabalho permanente da Secretaria Municipal de Educação (SME) para <strong>garantir o desenvolvimento e o cuidado na primeira infância</strong>. Por meio da ampliação da rede, do fortalecimento das parcerias e do aprimoramento dos mecanismos de acesso, a <strong>cidade busca assegurar que bebês e crianças de 0 a 3 anos tenham oportunidades de vivenciar experiências educativas em ambientes acolhedores, seguros e preparados para seu desenvolvimento</strong>.</p>\n\n<p>Até outubro de 2026, a <strong>Rede Municipal de Ensino registrou mais de 300 mil crianças matriculadas nos Centros de Educação Infantil (CEIs)</strong>. Somente neste ano, a Prefeitura entregou duas novas unidades de CEI e um Centro Municipal de Educação Infantil (CEMEI), ampliando a oferta em mais de 400 vagas.</p>\n\n<p>A expansão é acompanhada pelo monitoramento permanente da demanda, permitindo que a SME planeje o atendimento de acordo com as necessidades dos diferentes territórios. As <strong>solicitações de matrícula podem ser feitas durante todo o ano</strong>, diretamente em uma unidade de Educação Infantil da Rede Municipal ou pelos canais oficiais da Secretaria. Veja abaixo</p>\n\n<p>Da primeira infância aos anos iniciais do Ensino Fundamental, a Prefeitura mantém ações voltadas à ampliação do acesso, ao desenvolvimento das crianças e ao fortalecimento das práticas pedagógicas. Na creche, esse percurso começa com oportunidades de brincar, conviver, explorar e descobrir, experiências que fazem parte da formação de cada criança.</p>\n\n<p>&nbsp;</p>\n\n<p><strong>Satisfação das famílias é destaque em pesquisa Datafolha</strong><br>\nO levantamento ouviu presencialmente<strong> 600 pais e responsáveis por crianças matriculadas em creches municipais e unidades da rede parceira</strong>, entre 24 de setembro e 16 de outubro de 2026. A <strong>nota média atribuída às unidades frequentadas pelos filhos foi 9,7,</strong> em uma escala de zero a dez. Ao todo, <strong>93% dos entrevistados deram notas 9 ou 10.</strong></p>\n\n<p>O resultado foi o mesmo entre os responsáveis por crianças atendidas diretamente pela Prefeitura e aqueles cujos filhos frequentam unidades administradas por organizações parceiras. Nos dois grupos, a avaliação média chegou a 9,7.</p>\n\n<p>Entre os serviços avaliados, <strong>alimentação e limpeza receberam as maiores notas, com média 9,8.</strong> A <strong>qualificação dos professores e cuidadores e a qualidade do atendimento</strong> alcançaram 9,7. A <strong>segurança </strong>recebeu nota 9,6, enquanto os <strong>espaços destinados às brincadeiras</strong> tiveram média 9,5.</p>\n\n<p>A <strong>política de fila zerada foi aprovada por 99% dos entrevistados.</strong> Já o <strong>programa Mamãe Tarifa Zero</strong>, que oferece gratuidade no transporte para responsáveis por crianças matriculadas em creches, recebeu aprovação de 96%. A pesquisa também avaliou aspectos como comunicação com as famílias, conservação dos espaços, localização e desenvolvimento infantil.</p>\n\n<p><strong>Saiba mais:</strong> <a href=\"https://prefeitura.sp.gov.br/w/datafolha-creches-da-prefeitura-recebem-nota-9-7-dos-pais-e-responsáveis-das-crian%C3%A7as-matriculadas &nbsp;\">Datafolha: Creches da Prefeitura recebem nota 9,7 dos pais e responsáveis das crianças matriculadas</a></p>\n\n<p><br>\n<strong>Fila zerada pelo sexto ano consecutivo</strong><br>\nDesde 2020, a <strong>Prefeitura trabalha para garantir que todas as famílias que solicitam uma vaga para bebês e crianças de 0 a 3 anos sejam atendidas</strong>. A política inclui a<strong> expansão da Rede Municipal de Ensino</strong>, <strong>a abertura de novas unidades e o fortalecimento das parcerias.</strong></p>\n\n<p>Manter a fila de creches zerada, criando as vagas necessárias para garantir o cuidado e o desenvolvimento integral desde os primeiros anos de vida, é a<strong> meta 77 do Programa de Metas 2025-2028 da gestão municipal.</strong></p>\n\n<p>&nbsp;</p>\n\n<p><strong>Cuidado que começa antes do nascimento</strong><br>\nA<strong> atenção à primeira infância também envolve o planejamento das famílias durante a gestação. </strong>Por meio do <strong>programa Mãe Paulistana Creche</strong>, desenvolvido em parceria entre as Secretarias Municipais da Saúde (SMS) e da Educação (SME), gestantes atendidas pela <strong>Rede Municipal de Atenção Materno Infantil </strong>podem manifestar interesse por uma vaga para seus bebês ainda durante o pré-natal.</p>\n\n<p>O procedimento começa nas<strong> Unidades Básicas de Saúde (UBSs), </strong>onde as equipes orientam as futuras mães e registram as informações necessárias. A manifestação de interesse deve ocorrer <strong>até o quarto mês de gestação. </strong>Os dados são encaminhados à SME, que realiza o pré-cadastro no sistema Escola On-line (EOL) e organiza a disponibilização da vaga conforme o período indicado pela família e os procedimentos do programa.</p>\n\n<p>A iniciativa aproxima os serviços de Saúde e Educação e permite que as famílias se organizem com antecedência para o ingresso das crianças na rede municipal.</p>\n\n<p>&nbsp;</p>\n\n<p><strong>Brincar, descobrir e aprender</strong><br>\nNas creches municipais, a aprendizagem acontece por meio de experiências que respeitam as diferentes fases do desenvolvimento infantil. O<strong> currículo da Educação Infantil reconhece bebês e crianças como sujeitos de direitos e protagonistas de suas descobertas</strong>, tendo as interações e as brincadeiras como eixos centrais das práticas pedagógicas.</p>\n\n<p>A <strong>rotina das unidades combina atividades educativas, convivência, exploração de diferentes materiais e acompanhamento dos educadores. </strong>O atendimento integral também contempla <strong>alimentação e cuidados diários, com até cinco refeições planejadas por nutricionistas, </strong>de acordo com as necessidades de cada faixa etária.</p>\n\n<p><strong>As experiências contribuem para o desenvolvimento físico, cognitivo, social, emocional e da linguagem, respeitando os ritmos e as particularidades de cada criança.</strong></p>\n\n<p>&nbsp;</p>\n\n<p><strong>Bebetecas levam experiências de leitura e brincadeira aos CEUs</strong><br>\nAs oportunidades de desenvolvimento também ultrapassam os espaços das unidades escolares. Os <strong>Centros Educacionais Unificados (CEUs) da capital contam com 18 Bebetecas</strong>, ambientes abertos à comunidade e <strong>destinados a bebês e crianças de 0 a 3 anos.</strong></p>\n\n<p>Com<strong> brinquedos, livros, mobiliário adequado e materiais pedagógicos</strong>, os espaços oferecem experiências de convivência, brincadeira e descoberta, acompanhadas por profissionais mediadores. A proposta incentiva o contato com os livros desde os primeiros anos de vida e fortalece os vínculos entre as crianças e seus adultos de referência.</p>\n\n<p>Em 2025 e ao longo de 2026, as Bebetecas registraram <strong>mais de 10 mil atendimentos</strong>, ampliando as oportunidades de convivência, leitura e brincadeira para as famílias paulistanas.</p>\n\n<p>&nbsp;</p>\n\n<p><strong>Rede Municipal avança nos indicadores de aprendizagem</strong><br>\nA Rede Municipal de Ensino de São Paulo também registrou avanços nos indicadores de aprendizagem. No Índice de Desenvolvimento da Educação Básica (Ideb) de 2025, divulgado em 2026, a <strong>cidade alcançou nota 5,8 nos anos iniciais do Ensino Fundamental, ante 5,6 na avaliação anterior. Nos anos finais, o índice passou de 4,8 para 4,9.</strong></p>\n\n<p>Os resultados reforçam o trabalho desenvolvido pela Prefeitura para fortalecer a aprendizagem em todas as etapas da vida escolar, desde a Educação Infantil até o Ensino Fundamental. O acompanhamento dos indicadores permite identificar avanços e orientar ações voltadas à melhoria da qualidade do ensino oferecido aos estudantes da capital.</p>\n\n<p><strong>Saiba mais:</strong> <a href=\"https://prefeitura.sp.gov.br/w/rede-municipal-da-capital-avan%C3%A7a-no-ideb-nos-anos-iniciais-e-finais-do-ensino-fundamental\">Rede municipal da capital avança no Ideb nos anos iniciais e finais do ensino fundamental</a></p>\n\n<p>&nbsp;</p>\n\n<p><strong>Como solicitar uma vaga na creche</strong><br>\nAs famílias interessadas podem procurar a unidade de Educação Infantil mais próxima. A consulta pode ser feita pelo portal <a href=\"https://escolaaberta.sme.prefeitura.sp.gov.br/\">Escola Aberta</a> ou pelo cadastro on-line, disponível no site <a href=\"https://cadastroinfantil.sme.prefeitura.sp.gov.br/\">Cadastro Infantil</a>.</p>\n\n<p><strong>Documentos necessários:</strong></p>\n\n<ul>\n\t<li>Certidão de nascimento da criança (original e cópia simples ou digital);</li>\n\t<li>Comprovante de endereço com CEP (conta de água, luz, telefone ou gás);</li>\n\t<li>Documento de identificação do responsável (RG, RNE ou CNH).</li>\n</ul>\n\n<p><span style=\"font-size:12pt\"><span style=\"line-height:115%\"><span style=\"font-family:Aptos,sans-serif\"></span></span></span></p>\n<gr-manager></gr-manager><gr-checker></gr-checker><gr-manager></gr-manager><gr-checker></gr-checker><summarizer-badge></summarizer-badge><gr-manager></gr-manager><gr-checker></gr-checker><summarizer-badge></summarizer-badge><gr-manager></gr-manager><gr-checker></gr-checker><summarizer-badge></summarizer-badge><gr-manager></gr-manager><gr-checker></gr-checker><summarizer-badge></summarizer-badge>"
+    },
+    "dataType": "string",
+    "fieldReference": "content",
+    "label": "Conteúdo da notícia",
+    "name": "RichText14595496",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": "false"
+    },
+    "dataType": "boolean",
+    "fieldReference": "hideTitleAndDescription",
+    "inputControl": "checkbox",
+    "label": "Esconder título e resumo",
+    "name": "Checkbox29697924",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": ""
+    },
+    "dataType": "string",
+    "fieldReference": "altTitle",
+    "inputControl": "text",
+    "label": "Título Alternativo",
+    "name": "Text26685866",
+    "nestedContentFields": [],
+    "repeatable": false
+   },
+   {
+    "contentFieldValue": {
+     "data": ""
+    },
+    "dataType": "string",
+    "fieldReference": "altDescription",
+    "inputControl": "text",
+    "label": "Resumo Alternativo",
+    "name": "Text49353419",
+    "nestedContentFields": [],
+    "repeatable": false
+   }
+  ],
+  "contentStructureId": 79914,
+  "customFields": [
+   {
+    "customValue": {
+     "data": ""
+    },
+    "dataType": "Text",
+    "name": "newsOriginalSourceID"
+   },
+   {
+    "customValue": {
+     "data": ""
+    },
+    "dataType": "Text",
+    "name": "newsOldLink"
+   }
+  ],
+  "dateCreated": "2026-11-19T20:35:12Z",
+  "dateModified": "2026-11-19T20:52:16Z",
+  "datePublished": "2026-11-19T20:52:00Z",
+  "description": "<p> </p>\n<gr-manager></gr-manager><gr-checker></gr-checker>",
+  "externalReferenceCode": "42e07bde-5586-f474-0e74-1b1200912205",
+  "friendlyUrlPath": "educa%C3%A7%C3%A3o-que-come%C3%A7a-no-ber%C3%A7o-reconhecimento-das-fam%C3%ADlias-refor%C3%A7a-a-import%C3%A2ncia-da-primeira-inf%C3%A2ncia-na-cidade",
+  "id": 62855837,
+  "key": "62855835",
+  "keywords": [],
+  "neverExpire": true,
+  "numberOfComments": 0,
+  "priority": 0.0,
+  "siteId": 34276,
+  "structuredContentFolderId": 4033298,
+  "subscribed": false,
+  "taxonomyCategoryBriefs": [],
+  "title": "Educação que começa no berço: reconhecimento das famílias reforça a importância da primeira infância na cidade",
+  "uuid": "42e07bde-5586-f474-0e74-1b1200912205"
+ }
+]
