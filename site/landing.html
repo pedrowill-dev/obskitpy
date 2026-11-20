@@ -4,7 +4,7 @@
 <section class="hero">
   <div class="container hero-grid">
     <div>
-      <span class="chip"><i></i> v0.2 · já no PyPI · licença MIT</span>
+      <span class="chip"><i></i> v0.7 · já no PyPI · licença MIT</span>
       <h1>Observabilidade para <em>automações Python</em>, em dois comandos.</h1>
       <p class="lead">Logs, traces e métricas do seu RPA, scraper ou job num dashboard — e <b>você escolhe onde ver</b>: o <b>dash-obskitpy</b> (leve e próprio) ou o <b>Kibana</b>. Local, em Docker, sobre padrões abertos.</p>
       <div class="hero-cta">
@@ -28,7 +28,7 @@ obskitpy init            # assistente interativo</code></pre></div>
       <div class="term-body" id="term" aria-live="off"></div>
       <script type="application/json" id="term-script">[
         {"cmd": "uv run obskitpy init"},
-        {"out": "  obskitpy ▁▂▁▁▃▇▂▁▁▂▁ v0.2.0", "cls": "ok", "wait": 250},
+        {"out": "  obskitpy ▁▂▁▁▃▇▂▁▁▂▁ v0.7.0", "cls": "ok", "wait": 250},
         {"out": "? Nome do serviço (meu-projeto) ›", "cls": "u"},
         {"out": "? Onde você quer visualizar os logs?"},
         {"out": "   1 Kibana   2 dash-obskitpy   3 Os dois", "cls": "c"},
@@ -79,7 +79,40 @@ shutdown = obskitpy.setup("meu-servico")</code></pre>
     <span class="eyebrow">Visão geral</span>
     <h2>Como o obskitpy funciona</h2>
     <p class="sub">Sua automação Python manda logs, métricas e traces; o obskitpy guarda tudo no Elasticsearch, e você escolhe onde ver.</p>
-    <figure style="margin:0"><div class="shot"><img src="assets/images/como-funciona.png" alt="Automações Python enviam logs, métricas e traces ao obskitpy, que grava no Elasticsearch para visualizar no dash-obskitpy ou no Kibana" loading="lazy"></div></figure>
+    <div class="flow" id="flow">
+      <noscript><div class="shot"><img src="assets/images/como-funciona.png" alt="Automações Python enviam logs, métricas e traces ao obskitpy, que grava no Elasticsearch para visualizar no dash-obskitpy ou no Kibana"></div></noscript>
+      <p class="flow-hint">Passe o mouse (ou toque) em qualquer parte para ver o que significa</p>
+      <div class="flow-grid">
+        <div class="fcol fleft"><span class="ftag blue">Automações (Python)</span>
+          <button class="fnode " type="button" data-k="rpa"><span class="fic"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V4.5M9 13h.01M15 13h.01M9.5 16.5h5M2 13v3M22 13v3"/><circle cx="12" cy="4" r="1.2"/></svg></span><span class="ftx"><b>RPA</b><small>Selenium · requests · etc.</small></span></button>
+          <button class="fnode " type="button" data-k="etl"><span class="fic"><svg viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg></span><span class="ftx"><b>ETL / ELT</b><small>Pipelines de dados</small></span></button>
+          <button class="fnode " type="button" data-k="integ"><span class="fic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/><circle cx="12" cy="12" r="8"/></svg></span><span class="ftx"><b>Integrações</b><small>APIs · SAP · ERP</small></span></button>
+        </div>
+        <div class="fcol fmid">
+          <button type="button" class="fcore" data-k="core"><span class="fglow"></span><img src="assets/img/logo-icon-dark.png" alt="" width="64" height="64"><span class="fcore-t">obskit<b>py</b></span><small>Biblioteca + CLI de Observabilidade</small></button>
+          <ul class="fchecks">
+            <li><button type="button" class="fcheck" data-k="logs"><i>✓</i>Captura logs estruturados</button></li>
+            <li><button type="button" class="fcheck" data-k="errors"><i>✓</i>Registra execuções e erros (tipo e origem)</button></li>
+            <li><button type="button" class="fcheck" data-k="metrics"><i>✓</i>Coleta métricas (tempo, status, etc.)</button></li>
+            <li><button type="button" class="fcheck" data-k="traces"><i>✓</i>Gera traces (execução ponta a ponta)</button></li>
+          </ul>
+        </div>
+        <div class="fcol fright"><span class="ftag">Onde fica e como você vê</span>
+          <button class="fnode teal" type="button" data-k="es"><span class="fic"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="3"/><path d="M4.5 5.5v13c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-13M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"/></svg></span><span class="ftx"><b>Elasticsearch</b><small>Armazena logs, execuções, métricas e traces</small></span></button>
+          <button class="fnode teal" type="button" data-k="dash"><span class="fic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2.5"/><path d="m6.5 14 3.5-4 3 2.5 4.5-5.5M8 21h8"/></svg></span><span class="ftx"><b>dash-obskitpy</b><small>Leve, com Realtime, período em s/min/h e vários projetos</small></span></button>
+          <button class="fnode amber" type="button" data-k="kibana"><span class="fic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg></span><span class="ftx"><b>Kibana</b><small>Completo: explore a fundo e monte seus painéis</small></span></button>
+        </div>
+        <svg class="flow-svg" aria-hidden="true"></svg>
+      </div>
+      <div class="flow-info" aria-live="polite"><span class="fi-kicker"></span><b class="fi-title"></b><p class="fi-text"></p><code class="fi-code" hidden></code></div>
+      <ol class="flow-steps">
+        <li><button type="button" data-step="1"><i>1</i><span>Execução da<br>automação (Python)</span></button></li>
+        <li><button type="button" data-step="2"><i>2</i><span>obskitpy coleta<br>logs, métricas e traces</span></button></li>
+        <li><button type="button" data-step="3"><i>3</i><span>Armazena no<br>Elasticsearch</span></button></li>
+        <li><button type="button" data-step="4"><i>4</i><span>Visualização no<br>dash-obskitpy ou Kibana</span></button></li>
+      </ol>
+      <div class="flow-tip" role="tooltip" hidden></div>
+    </div>
   </div>
 </section>
 

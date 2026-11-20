@@ -216,3 +216,141 @@
     })();
   }
 })();
+
+/* ---------- diagrama interativo "Como funciona" ---------- */
+(() => {
+  const flow = document.getElementById("flow");
+  if (!flow) return;
+  const $ = (s, r = flow) => r.querySelector(s), $$ = (s, r = flow) => [...r.querySelectorAll(s)];
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const canHover = matchMedia("(hover: hover)").matches;
+
+  // O que cada peça significa. `tip` = balão curto no mouse; `text` = explicação completa; `code` = exemplo (opcional).
+  const INFO = {
+    rpa: { t: "RPA", k: "Automações", tip: "Robôs que clicam, navegam e preenchem sistemas.", text: "Robôs que automatizam tarefas repetitivas (Selenium, Playwright, <code>requests</code>…). Basta chamar <code>setup(\"meu-robo\")</code> uma vez: o <code>logging</code> que você já usa passa a aparecer no painel.", code: 'setup("meu-robo")' },
+    etl: { t: "ETL / ELT", k: "Automações", tip: "Pipelines que extraem, transformam e carregam dados.", text: "Pipelines de dados. Cada etapa pode virar uma <em>span</em> com <code>@traced</code>, e você vê quanto tempo cada uma levou e onde falhou.", code: "@traced()\ndef transformar(df): ..." },
+    integ: { t: "Integrações", k: "Automações", tip: "Chamadas a APIs, SAP, ERP e outros sistemas.", text: "Código que conversa com APIs, SAP, ERP… As chamadas feitas com <code>requests</code> são instrumentadas sozinhas: o tempo e o status de cada uma entram nos traces.", code: "setup(..., instrument_requests=True)" },
+    core: { t: "obskitpy — biblioteca + CLI", k: "O coração", tip: "Uma biblioteca para o seu código e uma CLI para a infraestrutura.", text: "A <strong>biblioteca</strong> (<code>import obskitpy</code>) captura o que o robô faz, usando OpenTelemetry. A <strong>CLI</strong> (<code>obskitpy init</code>) sobe a stack e cria o dashboard sozinha, em qualquer projeto Python.", code: "uv add obskitpy && uv run obskitpy init" },
+    logs: { t: "Logs estruturados", k: "O que o obskitpy captura", tip: "O logging de sempre, mas com campos pesquisáveis.", text: "Cada <code>logging.info(...)</code> vira um registro com serviço, nível, hora e atributos, pronto para filtrar e buscar." },
+    errors: { t: "Execuções e erros", k: "O que o obskitpy captura", tip: "Cada erro com tipo, origem e cadeia de causas.", text: "Quando algo quebra, o erro é guardado com o <strong>tipo</strong> (<code>KeyError</code>), a <strong>origem</strong> (arquivo e linha) e a cadeia de exceções, e agrupado no painel." },
+    metrics: { t: "Métricas", k: "O que o obskitpy captura", tip: "Números ao longo do tempo: duração, contagens, status.", text: "Contadores e medidas (tempo de execução, itens processados, status) coletados a cada poucos segundos, para ver tendências e picos." },
+    traces: { t: "Traces", k: "O que o obskitpy captura", tip: "O caminho da execução, ponta a ponta.", text: "A execução inteira como uma linha do tempo de etapas (<em>waterfall</em>): você vê o que rodou, em que ordem e quanto cada parte demorou." },
+    es: { t: "Elasticsearch", k: "Onde fica", tip: "O banco onde tudo é guardado e pesquisado.", text: "Guarda logs, execuções, métricas e traces em <em>data streams</em>. O OpenTelemetry Collector grava lá a cada segundo, e a busca é rápida mesmo com milhões de registros.", code: "logs · traces · metrics -generic.otel-default" },
+    dash: { t: "dash-obskitpy", k: "Como você vê", tip: "Painel leve, ao vivo, com vários projetos.", text: "O painel próprio do obskitpy: abre rápido, tem <strong>Realtime</strong>, período em segundos, minutos ou horas e um seletor para alternar entre vários projetos.", code: "obskitpy status  →  abre o dash" },
+    kibana: { t: "Kibana", k: "Como você vê", tip: "Completo: explore a fundo e monte seus painéis.", text: "A ferramenta oficial do Elasticsearch, para quem quer investigar a fundo e montar os próprios painéis. É opcional: escolha com <code>--local kibana</code> ou <code>ambos</code>.", code: "obskitpy init --local ambos" },
+  };
+  const STEPS = {
+    1: { t: "A automação roda", text: "O seu código Python (RPA, ETL, integrações) executa normalmente: nada muda na forma de escrever." },
+    2: { t: "O obskitpy coleta", text: "Logs, métricas e traces são capturados e enviados por OpenTelemetry ao Collector, em segundo plano e sem travar o robô." },
+    3: { t: "Tudo fica no Elasticsearch", text: "Os dados são gravados e indexados, prontos para consulta e para alertas." },
+    4: { t: "Você visualiza", text: "Abra o dash-obskitpy (leve, ao vivo) ou o Kibana (completo) e veja o que o robô fez, em tempo real." },
+  };
+  // quais passos acendem cada peça
+  const STEP_OF = { rpa: 1, etl: 1, integ: 1, core: 2, logs: 2, errors: 2, metrics: 2, traces: 2, es: 3, dash: 4, kibana: 4 };
+  const PATHS = [["rpa", "core"], ["etl", "core"], ["integ", "core"], ["core", "es"], ["core", "dash"], ["core", "kibana"]];
+  const STEP_PATHS = { 1: [0, 1, 2], 2: [], 3: [3], 4: [4, 5] };
+
+  const el = (k) => $(`[data-k="${k}"]`);
+  const svg = $(".flow-svg"), info = $(".flow-info"), tip = $(".flow-tip");
+  let paths = [], step = 0, timer = null, resumeT = null, pinned = false;
+
+  // ----- linhas e partículas (calculadas a partir da posição real dos elementos) -----
+  function draw() {
+    const g = $(".flow-grid"), gr = g.getBoundingClientRect();
+    if (getComputedStyle(svg).display === "none") return;
+    const pt = (k, side) => { const r = el(k).getBoundingClientRect(); return [(side === "r" ? r.right : r.left) - gr.left, r.top + r.height / 2 - gr.top]; };
+    svg.setAttribute("viewBox", `0 0 ${gr.width} ${gr.height}`);
+    svg.innerHTML = "";
+    paths = PATHS.map(([a, b], i) => {
+      const [x1, y1] = pt(a, a === "core" ? "r" : "r"), [x2, y2] = pt(b, "l");
+      const sx = a === "core" ? pt("core", "r")[0] : x1, ex = b === "core" ? pt("core", "l")[0] : x2;
+      const mx = (sx + ex) / 2, d = `M${sx},${y1} C${mx},${y1} ${mx},${y2} ${ex},${y2}`;
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", d); p.setAttribute("class", "fp"); svg.appendChild(p);
+      if (!reduce) for (let n = 0; n < 3; n++) {
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        c.setAttribute("r", "3.6"); if (b === "kibana") c.setAttribute("class", "amber");
+        const m = document.createElementNS("http://www.w3.org/2000/svg", "animateMotion");
+        m.setAttribute("path", d); m.setAttribute("dur", "3.2s"); m.setAttribute("repeatCount", "indefinite"); m.setAttribute("begin", `${-(n * 1.07 + i * 0.3)}s`);
+        c.appendChild(m); svg.appendChild(c);
+      }
+      return p;
+    });
+    paint();
+  }
+
+  // ----- estado visual -----
+  let active = { keys: new Set(), paths: new Set() };
+  function paint() {
+    flow.classList.toggle("hl", active.keys.size > 0);
+    $$("[data-k]").forEach((n) => { const on = active.keys.has(n.dataset.k); n.classList.toggle("on", on); n.classList.toggle("rel", false); });
+    paths.forEach((p, i) => p.classList.toggle("on", active.paths.has(i)));
+  }
+  function show(title, kicker, html, code) {
+    info.querySelector(".fi-kicker").textContent = kicker; info.querySelector(".fi-title").textContent = title;
+    info.querySelector(".fi-text").innerHTML = html;
+    const c = info.querySelector(".fi-code"); c.hidden = !code; c.textContent = code || "";
+    info.classList.remove("swap"); void info.offsetWidth; info.classList.add("swap");
+  }
+  function focusKey(k) {
+    const i = INFO[k]; if (!i) return;
+    const keys = new Set([k]), ps = new Set();
+    PATHS.forEach(([a, b], n) => { if (a === k || b === k || k === "core" || ["logs", "errors", "metrics", "traces"].includes(k)) ps.add(n); });
+    if (["logs", "errors", "metrics", "traces"].includes(k)) keys.add("core");
+    active = { keys, paths: ps }; paint();
+    $$("[data-step]").forEach((b) => b.classList.remove("on"));
+    show(i.t, i.k, i.text, i.code);
+  }
+  function focusStep(n) {
+    step = n; const s = STEPS[n];
+    $$("[data-step]").forEach((b) => b.classList.toggle("on", +b.dataset.step === n));
+    const keys = new Set(Object.keys(STEP_OF).filter((k) => STEP_OF[k] === n));
+    if (n === 2) { keys.add("core"); }
+    active = { keys, paths: new Set(STEP_PATHS[n]) }; paint();
+    show(s.t, `Passo ${n} de 4`, s.text);
+  }
+
+  // ----- balão ao passar o mouse -----
+  function showTip(node) {
+    const i = INFO[node.dataset.k]; if (!i || !canHover) return;
+    const fr = flow.getBoundingClientRect(), r = node.getBoundingClientRect();
+    tip.textContent = i.tip; tip.hidden = false;
+    const half = 130, left = Math.min(Math.max(r.left - fr.left + r.width / 2, half), fr.width - half);
+    tip.style.left = `${left}px`; tip.style.top = `${r.top - fr.top - 10}px`;
+  }
+
+  // ----- reprodução automática dos 4 passos -----
+  const DUR = 4200;
+  function play() { stop(); if (reduce || pinned) return; flow.dataset.paused = "0"; flow.style.setProperty("--dur", `${DUR}ms`); timer = setInterval(() => focusStep(step % 4 + 1), DUR); }
+  function stop() { clearInterval(timer); clearTimeout(resumeT); timer = null; }
+  function pause() { stop(); flow.dataset.paused = "1"; }
+  function resumeSoon() { clearTimeout(resumeT); if (pinned) return; resumeT = setTimeout(() => { if (!pinned) { focusStep(step % 4 + 1); play(); } }, 2200); }
+
+  $$("[data-k]").forEach((n) => {
+    n.addEventListener("mouseenter", () => { pause(); focusKey(n.dataset.k); showTip(n); });
+    n.addEventListener("focus", () => { pause(); focusKey(n.dataset.k); showTip(n); });
+    n.addEventListener("mouseleave", () => { tip.hidden = true; resumeSoon(); });
+    n.addEventListener("blur", () => { tip.hidden = true; });
+    n.addEventListener("click", () => { pause(); pinned = true; focusKey(n.dataset.k); });
+  });
+  $$("[data-step]").forEach((b) => {
+    b.addEventListener("click", () => { pinned = true; pause(); focusStep(+b.dataset.step); });
+    b.addEventListener("mouseenter", () => { pause(); focusStep(+b.dataset.step); });
+    b.addEventListener("mouseleave", () => { pinned = false; resumeSoon(); });
+  });
+  flow.addEventListener("mouseleave", () => { pinned = false; });
+  document.addEventListener("click", (e) => { if (!flow.contains(e.target)) { pinned = false; } });
+
+  // ----- entrada ao rolar a página + liga/desliga a animação fora da tela -----
+  $$(".fcol > *, .fchecks, .flow-info, .flow-steps li").forEach((n, i) => n.style.setProperty("--i", i % 6));
+  let ready = false;
+  new IntersectionObserver(([e]) => {
+    if (e.isIntersecting) {
+      flow.classList.add("in-view");
+      if (!ready) { ready = true; draw(); focusStep(1); }
+      if (!pinned && !timer) play();
+    } else pause();
+  }, { threshold: 0.25 }).observe(flow);
+  let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => ready && draw(), 150); });
+  if (document.fonts?.ready) document.fonts.ready.then(() => ready && draw());
+})();
