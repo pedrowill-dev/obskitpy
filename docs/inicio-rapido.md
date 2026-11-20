@@ -16,11 +16,14 @@ O projeto precisa estar **dentro do seu `$HOME`** (o Colima só compartilha essa
 
 ```bash
 cd meu-projeto
-python3 -m venv .venv && source .venv/bin/activate
-pip install "obskitpy[requests] @ git+https://github.com/pedrowill-dev/obskitpy.git#subdirectory=obskitpy"
+uv init && uv add "obskitpy[requests]"      # com uv (recomendado)
+# ou: pip install "obskitpy[requests]"
+# versão em desenvolvimento: uv add "obskitpy[requests] @ git+https://github.com/pedrowill-dev/obskitpy.git#subdirectory=obskitpy"
 ```
 
 ## 3. Criar a stack e o dashboard
+
+> Com uv, prefixe os comandos com `uv run` (ex.: `uv run obskitpy init`); com pip, ative o venv antes.
 
 ```bash
 obskitpy init        # nome do serviço = nome da pasta; use --service para escolher

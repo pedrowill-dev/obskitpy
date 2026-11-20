@@ -9,9 +9,9 @@ com **dois comandos** e **três linhas de código**. Tudo roda local, em Docker,
 [OpenTelemetry](https://opentelemetry.io/) → Elasticsearch → Kibana.
 
 ```bash
-pip install obskitpy
-obskitpy init     # cria observability/ (stack + dashboard base) no seu projeto
-obskitpy up       # sobe Elasticsearch, Kibana e Collector e cria o dashboard
+uv add "obskitpy[requests]"      # ou: pip install "obskitpy[requests]"
+uv run obskitpy init     # cria observability/ (stack + dashboard base) no seu projeto
+uv run obskitpy up       # sobe Elasticsearch, Kibana e Collector e cria o dashboard
 ```
 
 ```python
@@ -75,7 +75,8 @@ De um erro ao trace completo, pelo `trace_id` — veja qual operação falhou e 
 4. [Arquitetura](docs/arquitetura.md) — como os dados fluem e por que foi montado assim
 5. [Solução de problemas](docs/solucao-de-problemas.md)
 6. [Exemplo: notícias da Prefeitura de SP](exemplo-noticias-sp/README.md)
-7. [Contribuindo](CONTRIBUTING.md)
+7. [Publicando no PyPI](docs/publicando.md) — para mantenedores
+8. [Contribuindo](CONTRIBUTING.md)
 
 ## Requisitos
 
@@ -85,13 +86,28 @@ De um erro ao trace completo, pelo `trace_id` — veja qual operação falhou e 
 
 ## Instalação a partir do GitHub
 
-Enquanto o pacote não está no PyPI:
+### Com [uv](https://docs.astral.sh/uv/) (recomendado)
 
 ```bash
+uv add "obskitpy[requests]"        # adiciona ao seu projeto
+uv run obskitpy init               # a CLI roda no ambiente do projeto
+uvx obskitpy --help                # ou use a CLI sem instalar nada
+```
+
+### Com pip
+
+```bash
+pip install "obskitpy[requests]"
+```
+
+### Direto do GitHub (versão em desenvolvimento)
+
+```bash
+uv add "obskitpy[requests] @ git+https://github.com/pedrowill-dev/obskitpy.git#subdirectory=obskitpy"
 pip install "obskitpy[requests] @ git+https://github.com/pedrowill-dev/obskitpy.git#subdirectory=obskitpy"
 ```
 
-Ou, num clone local: `pip install -e "./obskitpy[requests]"`.
+Num clone local: `pip install -e "./obskitpy[requests]"`.
 O extra `requests` adiciona um span automático para cada chamada HTTP feita com a biblioteca `requests`.
 
 ## Segurança

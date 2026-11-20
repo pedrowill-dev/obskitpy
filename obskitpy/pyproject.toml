@@ -6,7 +6,21 @@ build-backend = "setuptools.build_meta"
 name = "obskitpy"
 version = "0.1.0"
 description = "Observabilidade (OpenTelemetry + Elasticsearch + Kibana) para qualquer projeto Python, via CLI."
+readme = "README.md"
 requires-python = ">=3.10"
+authors = [{ name = "Pedro França" }]
+keywords = ["observability", "opentelemetry", "elasticsearch", "kibana", "rpa", "logging", "tracing"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Logging",
+]
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
@@ -14,6 +28,11 @@ dependencies = [
     "opentelemetry-sdk==1.27.0",
     "opentelemetry-exporter-otlp-proto-grpc==1.27.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/pedrowill-dev/obskitpy"
+Documentation = "https://github.com/pedrowill-dev/obskitpy/tree/main/docs"
+Issues = "https://github.com/pedrowill-dev/obskitpy/issues"
 
 [project.optional-dependencies]
 requests = ["opentelemetry-instrumentation-requests==0.48b0", "setuptools==75.6.0"]

@@ -1,0 +1,31 @@
+name: Publish to PyPI
+# Publica ao criar uma tag vX.Y.Z (ou uma Release). Usa Trusted Publishing (OIDC): não há token guardado.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+        working-directory: obskitpy
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: obskitpy/dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

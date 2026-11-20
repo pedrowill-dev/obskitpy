@@ -9,7 +9,7 @@ Observabilidade (OpenTelemetry → Elasticsearch → Kibana) em qualquer projeto
 ## Começar (2 comandos)
 
 ```bash
-pip install obskitpy            # 'obskitpy[requests]' adiciona spans HTTP automáticos
+uv add "obskitpy[requests]"      # ou pip install; o extra 'requests' adiciona spans HTTP automáticos
 cd meu-projeto
 obskitpy init                   # cria observability/ (stack + dashboard base); --service NOME opcional
 obskitpy up                     # sobe ES + Kibana + Collector e cria o dashboard
