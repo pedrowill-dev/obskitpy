@@ -670,7 +670,7 @@ def test_error_variables_and_latest_error(monkeypatch):
 
 
 def _ai_settings(**kw):
-    return type("S", (), {"ai_key": "k", "ai_model": "m", "ai_daily_cap": 2, **kw})()
+    return type("S", (), {"ai_key": "k", "ai_model": "m", "ai_daily_cap": 2, "ai_provider": "gemini", "ai_url": "", "ai_enabled": True, **kw})()
 
 
 def _fake_gemini(monkeypatch, calls, fail=False):
@@ -704,7 +704,7 @@ def test_ai_explanation_is_cached_capped_and_minimal(client, monkeypatch):
         assert "linha 10" not in sent["contents"][0]["parts"][0]["text"]  # só o final do traceback
         assert asyncio.run(ai.explain(db, s, {**err, "erro": "OutroErro: x"})) == "Confira o id." and len(calls) == 2
         assert asyncio.run(ai.explain(db, s, {**err, "erro": "TerceiroErro: y"})) == "" and len(calls) == 2  # teto diário
-        assert asyncio.run(ai.explain(db, _ai_settings(ai_key=""), {"erro": "Z: z"})) == ""
+        assert asyncio.run(ai.explain(db, _ai_settings(ai_enabled=False), {"erro": "Z: z"})) == ""
 
 
 def test_ai_failure_is_not_retried_and_only_called_when_variable_is_used(client, monkeypatch):
@@ -717,3 +717,31 @@ def test_ai_failure_is_not_retried_and_only_called_when_variable_is_used(client,
 
     graph = {"nodes": [{"id": "a", "type": "action.notify", "config": {"title": "t", "message": "{{ explicacao }}"}}]}
     assert automations._uses(graph, "explicacao") and not automations._uses({"nodes": [{"id": "a", "config": {"message": "{{erro}}"}}]}, "explicacao")
+
+
+def test_ai_providers_build_the_right_request(monkeypatch):
+    seen = []
+
+    class Resp:
+        def __init__(self, data): self.data = data
+        def raise_for_status(self): pass
+        def json(self): return self.data
+
+    answers = {"anthropic": {"content": [{"type": "text", "text": "a"}]}, "openai": {"choices": [{"message": {"content": "o"}}]}}
+
+    class Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def post(self, url, headers=None, json=None):
+            seen.append((url, headers, json))
+            return Resp(answers["anthropic"] if "anthropic" in url else answers["openai"])
+    monkeypatch.setattr(ai.httpx, "AsyncClient", Client)
+    base = {"ai_key": "k", "ai_model": "", "ai_url": ""}
+    assert asyncio.run(ai._ask(_ai_settings(**base, ai_provider="anthropic"), "p")) == "a"
+    assert seen[-1][0] == ai.ANTHROPIC_URL and seen[-1][1]["x-api-key"] == "k" and seen[-1][2]["model"] == ai.DEFAULT_MODELS["anthropic"]
+    assert asyncio.run(ai._ask(_ai_settings(**base, ai_provider="openai"), "p")) == "o"
+    assert seen[-1][0] == "https://api.openai.com/v1/chat/completions" and seen[-1][1]["authorization"] == "Bearer k"
+    local = _ai_settings(ai_key="", ai_model="llama3.2", ai_url="http://localhost:11434/v1/", ai_provider="openai")
+    asyncio.run(ai._ask(local, "p"))
+    assert seen[-1][0] == "http://localhost:11434/v1/chat/completions" and seen[-1][1] == {} and seen[-1][2]["model"] == "llama3.2"

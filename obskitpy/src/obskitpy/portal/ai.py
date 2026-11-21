@@ -1,4 +1,4 @@
-"""Explicação do erro por IA (Gemini), pensada para gastar o mínimo de tokens.
+"""Explicação do erro por IA (a de preferência de quem instala: Gemini, Claude ou qualquer API compatível com OpenAI), pensada para gastar o mínimo de tokens.
 
 Estratégias, da que mais economiza para a que menos:
 1. Só roda se alguma mensagem usa `{{explicacao}}` (e se houver erro com traceback).
@@ -22,7 +22,10 @@ from .models import AiExplanation, now
 
 log = logging.getLogger("obskitpy.ai")
 
-URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+OPENAI_URL = "https://api.openai.com/v1"
+DEFAULT_MODELS = {"gemini": "gemini-3.5-flash-lite", "anthropic": "claude-haiku-5-5", "openai": "gpt-4.1-nano"}
 TTL_OK, TTL_FAIL = timedelta(days=7), timedelta(minutes=10)
 TAIL_LINES, TAIL_CHARS, MAX_OUTPUT_TOKENS = 6, 600, 120
 INSTRUCTION = ("Você explica erros de automações Python para quem opera o sistema. Responda em português, em no máximo 2 frases "
@@ -39,9 +42,33 @@ def compact(error: dict) -> str:
     return f"Erro: {error.get('erro', '')}\nOnde: {error.get('origem', '')}\n{tail}".strip()
 
 
+async def _ask(settings, prompt: str) -> str:
+    """Uma chamada à IA escolhida (gemini | anthropic | openai, que serve também Groq, OpenRouter, Ollama…)."""
+    provider, model, key = settings.ai_provider, settings.ai_model or DEFAULT_MODELS[settings.ai_provider], settings.ai_key
+    async with httpx.AsyncClient(timeout=10) as client:
+        if provider == "gemini":
+            resp = await client.post(GEMINI_URL.format(model=model), headers={"x-goog-api-key": key}, json={
+                "systemInstruction": {"parts": [{"text": INSTRUCTION}]}, "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0, "maxOutputTokens": MAX_OUTPUT_TOKENS, "thinkingConfig": {"thinkingLevel": "minimal"}}})
+            resp.raise_for_status()
+            return "".join(p.get("text", "") for p in resp.json()["candidates"][0]["content"]["parts"])
+        if provider == "anthropic":
+            resp = await client.post(ANTHROPIC_URL, headers={"x-api-key": key, "anthropic-version": "2023-06-01"}, json={
+                "model": model, "max_tokens": MAX_OUTPUT_TOKENS, "temperature": 0, "system": INSTRUCTION,
+                "messages": [{"role": "user", "content": prompt}]})
+            resp.raise_for_status()
+            return "".join(b.get("text", "") for b in resp.json()["content"])
+        base = (settings.ai_url or OPENAI_URL).rstrip("/")  # openai e compatíveis: o endereço é configurável
+        resp = await client.post(f"{base}/chat/completions", headers={"authorization": f"Bearer {key}"} if key else {}, json={
+            "model": model, "max_tokens": MAX_OUTPUT_TOKENS, "temperature": 0,
+            "messages": [{"role": "system", "content": INSTRUCTION}, {"role": "user", "content": prompt}]})
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"] or ""
+
+
 async def explain(db: Session, settings, error: dict) -> str:
     """Devolve a explicação (do cache ou da IA). Vazio se não deu: nunca levanta erro."""
-    if not settings.ai_key or not error.get("erro"):
+    if not settings.ai_enabled or not error.get("erro"):
         return ""
     sig, stamp = signature(error), now()
     row = db.get(AiExplanation, sig)
@@ -52,13 +79,7 @@ async def explain(db: Session, settings, error: dict) -> str:
         return ""
     text = ""
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(URL.format(model=settings.ai_model), headers={"x-goog-api-key": settings.ai_key}, json={
-                "systemInstruction": {"parts": [{"text": INSTRUCTION}]},
-                "contents": [{"parts": [{"text": compact(error)}]}],
-                "generationConfig": {"temperature": 0, "maxOutputTokens": MAX_OUTPUT_TOKENS, "thinkingConfig": {"thinkingLevel": "minimal"}}})
-        resp.raise_for_status()
-        text = "".join(p.get("text", "") for p in resp.json()["candidates"][0]["content"]["parts"]).strip()[:400]
+        text = (await _ask(settings, compact(error))).strip()[:400]
     except Exception as exc:  # a chave nunca vai para o log
         log.warning("não consegui explicar o erro (%s)", type(exc).__name__)
     if row:

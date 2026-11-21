@@ -51,7 +51,7 @@ Vários projetos podem usar a **mesma stack**: o `init` detecta uma stack já ro
 
 ## Portal: integrações e automações
 
-O `obskitpy portal enable` liga o portal (PostgreSQL + API + abas no dash). Em **Integrações** você conecta **Telegram, Microsoft Teams, Slack e e-mail** (com **Conectar com Slack em um clique**, canal, nome e ícone do robô). Em **Automações** você **desenha o fluxo** — gatilho (erros, etapas com falha, automação parada, intervalo) → condição → aviso — num editor visual estilo n8n, que reage aos seus logs em tempo real. Segredos criptografados, perfis de acesso e auditoria. Veja o [guia do portal](docs/portal.md).
+O `obskitpy portal enable` liga o portal (PostgreSQL + API + abas no dash). Em **Integrações** você conecta **Telegram, Microsoft Teams, Slack e e-mail** (com **Conectar com Slack em um clique**, canal, nome e ícone do robô). Em **Automações** você **desenha o fluxo** — gatilho (erros, etapas com falha, automação parada, intervalo) → condição → aviso — num editor visual estilo n8n, que reage aos seus logs em tempo real. Os avisos podem levar o **traceback Python** (`{{trace}}`) e uma **explicação do erro feita pela IA da sua preferência** (`{{explicacao}}`: Gemini, Claude, qualquer API compatível com OpenAI ou uma IA local como o Ollama), com cache e teto diário para gastar pouquíssimos tokens. Segredos criptografados, perfis de acesso e auditoria. Veja o [guia do portal](docs/portal.md).
 
 ![Editor de automações no dash-obskitpy](docs/images/dash-automacoes.png)
 

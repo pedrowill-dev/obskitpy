@@ -40,7 +40,7 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
     engine = engine or make_engine(settings.database_url)
     sessions = make_session_factory(engine)
     limiter = LoginLimiter()
-    explain_fn = (lambda db, error: ai.explain(db, settings, error)) if settings.ai_key else None  # IA opcional (OBSKITPY_GEMINI_KEY)
+    explain_fn = (lambda db, error: ai.explain(db, settings, error)) if settings.ai_enabled else None  # IA opcional (OBSKITPY_AI_*)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

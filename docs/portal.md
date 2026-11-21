@@ -113,12 +113,28 @@ Para erros, há três a mais, preenchidas com o erro mais recente da janela: `{{
 
 ### Explicação do erro por IA (`{{explicacao}}`)
 
-Com uma chave do Gemini, a variável `{{explicacao}}` traz 1 ou 2 frases com a causa provável e o que fazer. Para ligar, coloque em `observability/.portal.env` e rode `uv run obskitpy portal enable`:
+O obskitpy **não vem com IA embutida nem escolhe uma por você**: você usa a IA da sua preferência, com a sua própria chave. A variável `{{explicacao}}` traz 1 ou 2 frases com a causa provável do erro e o que fazer, direto no aviso do Slack, Teams, Telegram ou e-mail. Sem configurar nada, ela fica vazia e o resto funciona igual.
+
+Provedores aceitos (`OBSKITPY_AI_PROVIDER`):
+
+| Provedor | Valor | Modelo padrão (barato) | Observação |
+|---|---|---|---|
+| Google Gemini | `gemini` (padrão) | `gemini-3.5-flash-lite` | chave do [AI Studio](https://aistudio.google.com/apikey) |
+| Anthropic (Claude) | `anthropic` | `claude-haiku-5-5` | |
+| Compatível com OpenAI | `openai` | `gpt-4.1-nano` | também serve **Groq, OpenRouter, Ollama** (IA local, sem chave) etc., informando `OBSKITPY_AI_URL` |
+
+Para ligar, coloque em `observability/.portal.env` (que fica fora do git) e rode `uv run obskitpy portal enable`:
 
 ```
-OBSKITPY_GEMINI_KEY=sua-chave
-# opcionais: OBSKITPY_AI_MODEL=gemini-3.5-flash-lite  OBSKITPY_AI_DAILY_CAP=30
+OBSKITPY_AI_PROVIDER=gemini          # gemini | anthropic | openai
+OBSKITPY_AI_KEY=sua-chave
+# opcionais:
+# OBSKITPY_AI_MODEL=gemini-3.5-flash-lite
+# OBSKITPY_AI_URL=http://host.docker.internal:11434/v1   # só para "openai" (ex.: Ollama local)
+# OBSKITPY_AI_DAILY_CAP=30
 ```
+
+Se preferir uma IA local, como o Ollama, nada sai da sua máquina: use `OBSKITPY_AI_PROVIDER=openai`, `OBSKITPY_AI_URL` e `OBSKITPY_AI_MODEL`, sem chave. Com uma IA na nuvem, só o necessário vai para o provedor: a linha do erro e as últimas linhas do traceback (veja abaixo), nunca o log inteiro.
 
 Feita para gastar o mínimo (uma chamada custa cerca de 300 tokens):
 
