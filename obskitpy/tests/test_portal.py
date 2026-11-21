@@ -487,6 +487,10 @@ def test_kinds_catalog_marks_slack_app_as_oauth_and_hides_internal_fields(sclien
 # ---------- automações ----------
 
 import asyncio  # noqa: E402
+
+
+async def fake_error(es_url, ntype, config):
+    return {"erro": "KeyError: x", "origem": "m.py:f:1", "trace": "Traceback (x)"}
 from datetime import timedelta  # noqa: E402
 
 from obskitpy.portal import automations  # noqa: E402
@@ -522,7 +526,7 @@ def run_eval(client, auto_id, value, sent):
         return True, "enviado"
 
     with client.app_state.sessions() as db:
-        return asyncio.run(automations.evaluate(db, SECRET, "http://es", db.get(Automation, auto_id), fake_measure, fake_send))
+        return asyncio.run(automations.evaluate(db, SECRET, "http://es", db.get(Automation, auto_id), fake_measure, fake_send, fake_error))
 
 
 def test_automation_fires_reminds_and_resolves_through_the_flow(client):
@@ -581,7 +585,7 @@ def test_query_failure_is_recorded_and_state_kept(client):
         raise httpx.ConnectError("x")
 
     with client.app_state.sessions() as db:
-        assert asyncio.run(automations.evaluate(db, SECRET, "http://es", db.get(Automation, aid), boom)) == []
+        assert asyncio.run(automations.evaluate(db, SECRET, "http://es", db.get(Automation, aid), boom, error_fn=fake_error)) == []
     st = client.get("/api/v1/automations").json()[0]["state"]["t"]
     assert st["state"] == "ok" and "Elasticsearch" in st["error"]
 
@@ -637,3 +641,29 @@ def test_test_endpoint_runs_the_flow_for_real(client, requests_log):
 def test_template_variables_are_whitelisted():
     ctx = {"service": "a", "value": 3, "secret": "x"}
     assert automations.render("{{ service }}={{value}} {{secret}} {{desconhecida}}", ctx) == "a=3 {{secret}} {{desconhecida}}"
+
+
+def test_error_variables_and_latest_error(monkeypatch):
+    ctx = automations._context(type("A", (), {"name": "x"})(), {"config": {"service": "s", "window_minutes": 5}}, 2, "disparou",
+                               {"erro": "KeyError: 'a'", "origem": "m.py:f:3", "trace": "Traceback..."})
+    assert automations.render("{{erro}} | {{origem}} | {{trace}}", ctx) == "KeyError: 'a' | m.py:f:3 | Traceback..."
+    assert automations._context(type("A", (), {"name": "x"})(), {"config": {}}, 0, "e")["trace"] == ""  # sem erro, vazio (não fica {{trace}} cru)
+
+    hit = {"hits": {"hits": [{"_source": {"body": {"text": "falhou"}, "attributes": {
+        "error.type": "KeyError", "error.origin": "m.py:f:3", "exception.stacktrace": "x" * 3000 + "\nKeyError: 'FIM'"}}}]}}
+
+    class Resp:
+        status_code = 200
+        def json(self): return hit
+
+    class Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def post(self, *a, **k): return Resp()
+
+    monkeypatch.setattr(automations.httpx, "AsyncClient", Client)
+    got = asyncio.run(automations.latest_error("http://es", "trigger.error_logs", {"window_minutes": 5}))
+    assert got["erro"] == "KeyError: 'FIM'" and got["origem"] == "m.py:f:3"
+    assert got["trace"].startswith("…") and got["trace"].endswith("'FIM'") and len(got["trace"]) <= automations.TRACE_MAX + 1
+    assert asyncio.run(automations.latest_error("http://es", "trigger.no_data", {})) == {}

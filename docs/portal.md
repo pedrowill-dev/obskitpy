@@ -109,6 +109,7 @@ o que os seus robôs registram. Na aba **Automações** do dash você desenha um
 | **Enviar aviso** | Ação | Manda uma mensagem a um destino (canal do Slack, chat do Telegram, e-mail…) |
 
 Nas mensagens você usa variáveis: `{{service}}`, `{{value}}`, `{{window}}`, `{{automation}}`, `{{event}}` e `{{time}}`.
+Para erros, há três a mais, preenchidas com o erro mais recente da janela: `{{erro}}` (tipo e mensagem da exceção), `{{origem}}` (arquivo:função:linha) e `{{trace}}` (o traceback Python, limitado às últimas 1500 letras). Sem erro na janela (ex.: “Automação parada”), ficam vazias.
 
 **Como roda:** o portal avalia os gatilhos a cada 30 s consultando o Elasticsearch. Quando o gatilho estoura, ele
 percorre o fluxo a partir da saída *Disparou*; se continuar estourado, repete só depois do tempo de "relembrar"

@@ -19,7 +19,8 @@ log = logging.getLogger("obskitpy.automations")
 MAX_NODES, MAX_EDGES = 60, 150
 SEVERITIES = ("info", "warning", "critical")
 SERVICE_FIELD = "resource.attributes.service.name"
-VARIABLES = ("service", "value", "window", "automation", "event", "time")
+VARIABLES = ("service", "value", "window", "automation", "event", "time", "erro", "origem", "trace")
+TRACE_MAX = 1500  # o Slack/Telegram cortam mensagens longas; o fim do traceback é o que importa
 
 
 def _f(name, label, type_="text", default=None, **extra):
@@ -174,6 +175,33 @@ async def measure(es_url: str, ntype: str, config: dict) -> int:
                 + await _count(client, es_url, "traces-generic.otel-*", _query(service, window, [])))
 
 
+async def latest_error(es_url: str, ntype: str, config: dict) -> dict:
+    """O erro mais recente da janela (tipo/mensagem, ponto de origem e traceback Python). Vazio se não houver."""
+    if ntype == "trigger.no_data":
+        return {}
+    service, window = config.get("service", ""), config.get("every_minutes") or config.get("window_minutes", 5)
+    body = {**_query(service, window, [{"terms": {"severity_text": ["ERROR", "CRITICAL", "FATAL"]}}]), "size": 1,
+            "sort": [{"@timestamp": "desc"}], "_source": ["body", "attributes"]}
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(f"{es_url}/logs-generic.otel-*/_search", json=body, params={"ignore_unavailable": "true"})
+        hits = resp.json()["hits"]["hits"] if resp.status_code == 200 else []
+    except Exception:  # sem detalhe do erro o aviso ainda sai, só que sem as variáveis extras
+        return {}
+    if not hits:
+        return {}
+    src = hits[0]["_source"]
+    attrs = src.get("attributes") or {}
+    text = (src.get("body") or {}).get("text") or ""
+    kind = attrs.get("error.type") or attrs.get("exception.type") or ""
+    trace = (attrs.get("exception.stacktrace") or "").strip()
+    if trace:
+        text, kind = trace.splitlines()[-1], ""  # a última linha do traceback é "Tipo: mensagem" (a mensagem real da exceção)
+    if len(trace) > TRACE_MAX:
+        trace = "…" + trace[-TRACE_MAX:]
+    return {"erro": f"{kind}: {text}" if kind else text, "origem": attrs.get("error.origin", ""), "trace": trace}
+
+
 def breached(ntype: str, config: dict, value: int) -> bool:
     return value == 0 if ntype == "trigger.no_data" else value >= config.get("threshold", 1)
 
@@ -241,11 +269,11 @@ async def run_flow(db: Session, secret_key: str, graph: dict, trigger_id: str, p
     return steps
 
 
-def _context(auto: Automation, node: dict, value: int, event: str) -> dict:
+def _context(auto: Automation, node: dict, value: int, event: str, error: dict | None = None) -> dict:
     cfg = node["config"]
     window = cfg.get("every_minutes") or cfg.get("window_minutes") or 0
     return {"service": cfg.get("service", ""), "value": value, "window": window, "automation": auto.name, "event": event,
-            "time": now().astimezone().strftime("%d/%m %H:%M")}
+            "time": now().astimezone().strftime("%d/%m %H:%M"), "erro": "", "origem": "", "trace": "", **(error or {})}
 
 
 def _record(db: Session, auto: Automation, node: dict, event: str, value: int | None, steps: list[dict]) -> None:
@@ -258,7 +286,7 @@ def _aware(dt: datetime | None) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=now().tzinfo)
 
 
-async def evaluate(db: Session, secret_key: str, es_url: str, auto: Automation, measure_fn=measure, send_fn=send_to) -> list[str]:
+async def evaluate(db: Session, secret_key: str, es_url: str, auto: Automation, measure_fn=measure, send_fn=send_to, error_fn=latest_error) -> list[str]:
     """Avalia os gatilhos da automação. Devolve os eventos que aconteceram (para logs e testes)."""
     state, events = {k: dict(v) for k, v in (auto.state or {}).items()}, []
     for node in [n for n in auto.graph["nodes"] if n["type"].startswith("trigger.")]:
@@ -278,7 +306,7 @@ async def evaluate(db: Session, secret_key: str, es_url: str, auto: Automation, 
         st.update(error="", value=value, eval_at=stamp.isoformat())
         if node["type"] == "trigger.schedule":
             st["last_run"] = stamp.isoformat()
-            steps = await run_flow(db, secret_key, auto.graph, nid, "fired", _context(auto, node, value, "agendado"), send_fn)
+            steps = await run_flow(db, secret_key, auto.graph, nid, "fired", _context(auto, node, value, "agendado", await error_fn(es_url, node["type"], cfg)), send_fn)
             _record(db, auto, node, "agendado", value, steps)
             events.append("agendado")
         elif breached(node["type"], cfg, value):
@@ -289,7 +317,7 @@ async def evaluate(db: Session, secret_key: str, es_url: str, auto: Automation, 
                 event = "lembrete"
             else:
                 continue
-            steps = await run_flow(db, secret_key, auto.graph, nid, "fired", _context(auto, node, value, event), send_fn)
+            steps = await run_flow(db, secret_key, auto.graph, nid, "fired", _context(auto, node, value, event, await error_fn(es_url, node["type"], cfg)), send_fn)
             _record(db, auto, node, event, value, steps)
             st.update(state="firing", notified_at=stamp.isoformat())
             events.append(event)

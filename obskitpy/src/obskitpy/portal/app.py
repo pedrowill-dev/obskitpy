@@ -458,7 +458,8 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
                 except Exception as exc:
                     raise HTTPException(502, f"não consegui consultar o Elasticsearch ({type(exc).__name__})")
             values[node["id"]] = value
-            ctx = automations._context(auto, node, value, "teste")
+            error = await automations.latest_error(settings.es_url, node["type"], node["config"]) if settings.es_url else {}
+            ctx = automations._context(auto, node, value, "teste", error)
             ran = await automations.run_flow(db, settings.secret_key, auto.graph, node["id"], "fired", ctx, test=True)
             automations._record(db, auto, node, "teste", value, ran)
             steps += ran
