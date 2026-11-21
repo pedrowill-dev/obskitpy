@@ -24,6 +24,7 @@
     erro: ["O erro mais recente da janela: o tipo da exceção Python e a mensagem.", () => "KeyError: 'results' (resposta da API sem o campo esperado)"],
     origem: ["Onde o erro nasceu no seu código: arquivo:função:linha.", () => "main.py:buscar_noticias:42"],
     trace: ["O traceback Python completo do erro mais recente (as últimas linhas, se for grande). Dica: use em mensagens de Slack/e-mail, não em títulos.", () => 'Traceback (most recent call last):\n  File "main.py", line 42, in buscar_noticias\n    dados["results"]\nKeyError: \'results\''],
+    explicacao: ["Uma explicação curta, feita por IA (Gemini), da causa provável do erro e do que fazer. Fica vazia se a IA não estiver ligada. Cada erro diferente é explicado só uma vez (guardado em cache).", () => "A API devolveu 404: o post 9999 não existe. Confira o id antes de chamar."],
     time: ["Data e hora em que o aviso foi gerado.", () => new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", "")],
   };
   const sample = (text) => text.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (VAR_HELP[k] ? VAR_HELP[k][1]() : m));
@@ -88,7 +89,7 @@
     const TEMPLATES = [
       { id: "erro", t: "Avisar quando der erro", d: "Gatilho de erros → mensagem no canal, e outra quando normalizar.", build: (svc, dest) => ({ name: "Avisar quando der erro",
         nodes: [N("t", "trigger.error_logs", 0, 60, { service: svc, threshold: 1, window_minutes: 5, repeat_minutes: 30 }),
-                N("a", "action.notify", 330, 40, { destination_id: dest, severity: "critical", title: "🔴 {{automation}}", message: "{{value}} erro(s) em {{service}} nos últimos {{window}} min.\n\n{{erro}}\nOnde: {{origem}}\n\n{{trace}}" }),
+                N("a", "action.notify", 330, 40, { destination_id: dest, severity: "critical", title: "🔴 {{automation}}", message: "{{value}} erro(s) em {{service}} nos últimos {{window}} min.\n\n{{erro}}\nOnde: {{origem}}\n\n💡 {{explicacao}}\n\n{{trace}}" }),
                 N("b", "action.notify", 330, 200, { destination_id: dest, severity: "info", title: "✅ Normalizou", message: "{{service}} voltou ao normal." })],
         edges: [E("t", "fired", "a"), E("t", "resolved", "b")] }) },
       { id: "parou", t: "Avisar quando a automação parar", d: "Dispara se nenhum dado chegar por um tempo (robô travado ou que não rodou).", build: (svc, dest) => ({ name: "Automação parada",

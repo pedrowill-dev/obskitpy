@@ -16,6 +16,9 @@ class Settings:
     oauth_relay_url: str = "https://pedrowill-dev.github.io/obskitpy/oauth/slack-callback.html"
     es_url: str = ""               # Elasticsearch para avaliar os alertas (vazio = avaliador desligado)
     eval_interval: int = 30
+    ai_key: str = ""               # chave do Gemini; vazio = sem explicação por IA
+    ai_model: str = "gemini-3.5-flash-lite"
+    ai_daily_cap: int = 30         # teto de chamadas à IA por dia
 
 
 def load() -> Settings:
@@ -34,4 +37,7 @@ def load() -> Settings:
         oauth_relay_url=os.environ.get("OBSKITPY_OAUTH_RELAY", "https://pedrowill-dev.github.io/obskitpy/oauth/slack-callback.html"),
         es_url=os.environ.get("OBSKITPY_ES_URL", "").rstrip("/"),
         eval_interval=int(os.environ.get("OBSKITPY_EVAL_INTERVAL", "30")),
+        ai_key=os.environ.get("OBSKITPY_GEMINI_KEY", ""),
+        ai_model=os.environ.get("OBSKITPY_AI_MODEL", "gemini-3.5-flash-lite"),
+        ai_daily_cap=int(os.environ.get("OBSKITPY_AI_DAILY_CAP", "30")),
     )

@@ -7,7 +7,7 @@ import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-from obskitpy.portal import providers, security  # noqa: E402
+from obskitpy.portal import ai, providers, security  # noqa: E402
 from obskitpy.portal.app import create_app  # noqa: E402
 from obskitpy.portal.settings import Settings  # noqa: E402
 
@@ -667,3 +667,53 @@ def test_error_variables_and_latest_error(monkeypatch):
     assert got["erro"] == "KeyError: 'FIM'" and got["origem"] == "m.py:f:3"
     assert got["trace"].startswith("…") and got["trace"].endswith("'FIM'") and len(got["trace"]) <= automations.TRACE_MAX + 1
     assert asyncio.run(automations.latest_error("http://es", "trigger.no_data", {})) == {}
+
+
+def _ai_settings(**kw):
+    return type("S", (), {"ai_key": "k", "ai_model": "m", "ai_daily_cap": 2, **kw})()
+
+
+def _fake_gemini(monkeypatch, calls, fail=False):
+    class Resp:
+        def raise_for_status(self):
+            if fail:
+                raise httpx.HTTPStatusError("x", request=None, response=None)
+        def json(self): return {"candidates": [{"content": {"parts": [{"text": " Confira o id. "}]}}]}
+
+    class Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def post(self, url, **k):
+            calls.append(k["json"])
+            return Resp()
+    monkeypatch.setattr(ai.httpx, "AsyncClient", Client)
+
+
+def test_ai_explanation_is_cached_capped_and_minimal(client, monkeypatch):
+    calls = []
+    _fake_gemini(monkeypatch, calls)
+    err = {"erro": "HTTPError: HTTP Error 404 id 123", "origem": "m.py:f:3", "trace": "\n".join(f"linha {i}" for i in range(50))}
+    with client.app_state.sessions() as db:
+        s = _ai_settings()
+        assert asyncio.run(ai.explain(db, s, err)) == "Confira o id."
+        assert asyncio.run(ai.explain(db, s, {**err, "erro": "HTTPError: HTTP Error 404 id 999"})) == "Confira o id."  # mesmo erro, outro número: cache
+        assert len(calls) == 1
+        sent = calls[0]
+        assert sent["generationConfig"]["maxOutputTokens"] <= 120 and "linha 49" in sent["contents"][0]["parts"][0]["text"]
+        assert "linha 10" not in sent["contents"][0]["parts"][0]["text"]  # só o final do traceback
+        assert asyncio.run(ai.explain(db, s, {**err, "erro": "OutroErro: x"})) == "Confira o id." and len(calls) == 2
+        assert asyncio.run(ai.explain(db, s, {**err, "erro": "TerceiroErro: y"})) == "" and len(calls) == 2  # teto diário
+        assert asyncio.run(ai.explain(db, _ai_settings(ai_key=""), {"erro": "Z: z"})) == ""
+
+
+def test_ai_failure_is_not_retried_and_only_called_when_variable_is_used(client, monkeypatch):
+    calls = []
+    _fake_gemini(monkeypatch, calls, fail=True)
+    err = {"erro": "KeyError: 'a'", "origem": "m.py:f:3", "trace": "t"}
+    with client.app_state.sessions() as db:
+        assert asyncio.run(ai.explain(db, _ai_settings(), err)) == "" and asyncio.run(ai.explain(db, _ai_settings(), err)) == ""
+        assert len(calls) == 1  # falhou: espera 10 min antes de tentar de novo
+
+    graph = {"nodes": [{"id": "a", "type": "action.notify", "config": {"title": "t", "message": "{{ explicacao }}"}}]}
+    assert automations._uses(graph, "explicacao") and not automations._uses({"nodes": [{"id": "a", "config": {"message": "{{erro}}"}}]}, "explicacao")

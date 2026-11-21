@@ -111,6 +111,24 @@ o que os seus robôs registram. Na aba **Automações** do dash você desenha um
 Nas mensagens você usa variáveis: `{{service}}`, `{{value}}`, `{{window}}`, `{{automation}}`, `{{event}}` e `{{time}}`.
 Para erros, há três a mais, preenchidas com o erro mais recente da janela: `{{erro}}` (tipo e mensagem da exceção), `{{origem}}` (arquivo:função:linha) e `{{trace}}` (o traceback Python, limitado às últimas 1500 letras). Sem erro na janela (ex.: “Automação parada”), ficam vazias.
 
+### Explicação do erro por IA (`{{explicacao}}`)
+
+Com uma chave do Gemini, a variável `{{explicacao}}` traz 1 ou 2 frases com a causa provável e o que fazer. Para ligar, coloque em `observability/.portal.env` e rode `uv run obskitpy portal enable`:
+
+```
+OBSKITPY_GEMINI_KEY=sua-chave
+# opcionais: OBSKITPY_AI_MODEL=gemini-3.5-flash-lite  OBSKITPY_AI_DAILY_CAP=30
+```
+
+Feita para gastar o mínimo (uma chamada custa cerca de 300 tokens):
+
+1. **Só se você usar a variável** numa mensagem. Sem `{{explicacao}}`, a IA nunca é chamada.
+2. **Cache por erro:** o mesmo erro (tipo + origem, ignorando números e ids) é explicado uma vez e reaproveitado por 7 dias, inclusive nos lembretes e testes.
+3. **Entrada mínima:** só a linha do erro e as últimas 6 linhas do traceback (até 600 letras), nunca o log inteiro.
+4. **Saída curta:** até ~40 palavras, no máximo 120 tokens, raciocínio mínimo e temperatura 0.
+5. **Teto diário** de chamadas (padrão 30, as falhas contam). Passou do teto, o aviso sai igual, sem a explicação.
+6. **Falhou, não insiste:** espera 10 minutos antes de tentar de novo.
+
 **Como roda:** o portal avalia os gatilhos a cada 30 s consultando o Elasticsearch. Quando o gatilho estoura, ele
 percorre o fluxo a partir da saída *Disparou*; se continuar estourado, repete só depois do tempo de "relembrar"
 (0 = nunca); quando volta ao normal, percorre a saída *Normalizou*. Cada gatilho mostra no canvas o estado ao vivo

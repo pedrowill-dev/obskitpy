@@ -19,7 +19,7 @@ log = logging.getLogger("obskitpy.automations")
 MAX_NODES, MAX_EDGES = 60, 150
 SEVERITIES = ("info", "warning", "critical")
 SERVICE_FIELD = "resource.attributes.service.name"
-VARIABLES = ("service", "value", "window", "automation", "event", "time", "erro", "origem", "trace")
+VARIABLES = ("service", "value", "window", "automation", "event", "time", "erro", "origem", "trace", "explicacao")
 TRACE_MAX = 1500  # o Slack/Telegram cortam mensagens longas; o fim do traceback é o que importa
 
 
@@ -202,6 +202,18 @@ async def latest_error(es_url: str, ntype: str, config: dict) -> dict:
     return {"erro": f"{kind}: {text}" if kind else text, "origem": attrs.get("error.origin", ""), "trace": trace}
 
 
+def _uses(graph: dict, var: str) -> bool:
+    return any("{{" in str(v) and re.search(r"\{\{\s*" + var + r"\s*\}\}", str(v)) for n in graph["nodes"] for v in n["config"].values())
+
+
+async def error_context(db: Session, es_url: str, auto: Automation, node: dict, error_fn=None, explain_fn=None) -> dict:
+    """Detalhes do erro para as variáveis. A IA só é chamada se alguma mensagem usa {{explicacao}}."""
+    error = await (error_fn or latest_error)(es_url, node["type"], node["config"])
+    if error and explain_fn and _uses(auto.graph, "explicacao"):
+        error = {**error, "explicacao": await explain_fn(db, error)}
+    return error
+
+
 def breached(ntype: str, config: dict, value: int) -> bool:
     return value == 0 if ntype == "trigger.no_data" else value >= config.get("threshold", 1)
 
@@ -273,7 +285,7 @@ def _context(auto: Automation, node: dict, value: int, event: str, error: dict |
     cfg = node["config"]
     window = cfg.get("every_minutes") or cfg.get("window_minutes") or 0
     return {"service": cfg.get("service", ""), "value": value, "window": window, "automation": auto.name, "event": event,
-            "time": now().astimezone().strftime("%d/%m %H:%M"), "erro": "", "origem": "", "trace": "", **(error or {})}
+            "time": now().astimezone().strftime("%d/%m %H:%M"), "erro": "", "origem": "", "trace": "", "explicacao": "", **(error or {})}
 
 
 def _record(db: Session, auto: Automation, node: dict, event: str, value: int | None, steps: list[dict]) -> None:
@@ -286,7 +298,7 @@ def _aware(dt: datetime | None) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=now().tzinfo)
 
 
-async def evaluate(db: Session, secret_key: str, es_url: str, auto: Automation, measure_fn=measure, send_fn=send_to, error_fn=latest_error) -> list[str]:
+async def evaluate(db: Session, secret_key: str, es_url: str, auto: Automation, measure_fn=measure, send_fn=send_to, error_fn=latest_error, explain_fn=None) -> list[str]:
     """Avalia os gatilhos da automação. Devolve os eventos que aconteceram (para logs e testes)."""
     state, events = {k: dict(v) for k, v in (auto.state or {}).items()}, []
     for node in [n for n in auto.graph["nodes"] if n["type"].startswith("trigger.")]:
@@ -306,7 +318,7 @@ async def evaluate(db: Session, secret_key: str, es_url: str, auto: Automation, 
         st.update(error="", value=value, eval_at=stamp.isoformat())
         if node["type"] == "trigger.schedule":
             st["last_run"] = stamp.isoformat()
-            steps = await run_flow(db, secret_key, auto.graph, nid, "fired", _context(auto, node, value, "agendado", await error_fn(es_url, node["type"], cfg)), send_fn)
+            steps = await run_flow(db, secret_key, auto.graph, nid, "fired", _context(auto, node, value, "agendado", await error_context(db, es_url, auto, node, error_fn, explain_fn)), send_fn)
             _record(db, auto, node, "agendado", value, steps)
             events.append("agendado")
         elif breached(node["type"], cfg, value):
@@ -317,7 +329,7 @@ async def evaluate(db: Session, secret_key: str, es_url: str, auto: Automation, 
                 event = "lembrete"
             else:
                 continue
-            steps = await run_flow(db, secret_key, auto.graph, nid, "fired", _context(auto, node, value, event, await error_fn(es_url, node["type"], cfg)), send_fn)
+            steps = await run_flow(db, secret_key, auto.graph, nid, "fired", _context(auto, node, value, event, await error_context(db, es_url, auto, node, error_fn, explain_fn)), send_fn)
             _record(db, auto, node, event, value, steps)
             st.update(state="firing", notified_at=stamp.isoformat())
             events.append(event)
@@ -331,14 +343,14 @@ async def evaluate(db: Session, secret_key: str, es_url: str, auto: Automation, 
     return events
 
 
-async def run_forever(sessions, secret_key: str, es_url: str, interval: int) -> None:
+async def run_forever(sessions, secret_key: str, es_url: str, interval: int, explain_fn=None) -> None:
     """Laço do avaliador: roda enquanto o portal estiver no ar."""
     import asyncio
     while True:
         try:
             with sessions() as db:
                 for auto in db.scalars(select(Automation).where(Automation.enabled.is_(True))).all():
-                    await evaluate(db, secret_key, es_url, auto)
+                    await evaluate(db, secret_key, es_url, auto, explain_fn=explain_fn)
                 if db.scalar(select(func.count(AutomationRun.id))) > 1200:  # histórico limitado
                     keep = db.scalars(select(AutomationRun.id).order_by(AutomationRun.id.desc()).limit(1000)).all()
                     db.execute(delete(AutomationRun).where(AutomationRun.id < min(keep)))

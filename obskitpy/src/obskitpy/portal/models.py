@@ -120,3 +120,11 @@ class AuditEvent(Base):
     entity: Mapped[str] = mapped_column(String(60), default="")
     entity_id: Mapped[str] = mapped_column(String(60), default="")
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class AiExplanation(Base):
+    """Cache das explicações da IA por assinatura de erro (vazio = tentativa que falhou, vale por pouco tempo)."""
+    __tablename__ = "ai_explanations"
+    signature: Mapped[str] = mapped_column(String(40), primary_key=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)

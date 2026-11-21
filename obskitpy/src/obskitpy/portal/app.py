@@ -16,7 +16,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import automations, providers, schemas
+from . import ai, automations, providers, schemas
 from .db import Base, make_engine, make_session_factory
 from .models import (Automation, AutomationRun, AuditEvent, Contact, ContactGroup, Destination, OAuthApp, ProviderConnection, User, now)
 from .security import (LoginLimiter, decrypt_secrets, encrypt_secrets, hash_password, make_state, make_token, read_state,
@@ -40,6 +40,7 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
     engine = engine or make_engine(settings.database_url)
     sessions = make_session_factory(engine)
     limiter = LoginLimiter()
+    explain_fn = (lambda db, error: ai.explain(db, settings, error)) if settings.ai_key else None  # IA opcional (OBSKITPY_GEMINI_KEY)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -49,7 +50,7 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
                 db.add(User(email=settings.admin_email.lower(), name="Administrador", role="admin",
                             password_hash=hash_password(settings.admin_password)))
                 db.commit()
-        worker = asyncio.create_task(automations.run_forever(sessions, settings.secret_key, settings.es_url, settings.eval_interval)) if settings.es_url else None
+        worker = asyncio.create_task(automations.run_forever(sessions, settings.secret_key, settings.es_url, settings.eval_interval, explain_fn)) if settings.es_url else None
         yield
         if worker:
             worker.cancel()
@@ -458,7 +459,7 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
                 except Exception as exc:
                     raise HTTPException(502, f"não consegui consultar o Elasticsearch ({type(exc).__name__})")
             values[node["id"]] = value
-            error = await automations.latest_error(settings.es_url, node["type"], node["config"]) if settings.es_url else {}
+            error = await automations.error_context(db, settings.es_url, auto, node, explain_fn=explain_fn) if settings.es_url else {}
             ctx = automations._context(auto, node, value, "teste", error)
             ran = await automations.run_flow(db, settings.secret_key, auto.graph, node["id"], "fired", ctx, test=True)
             automations._record(db, auto, node, "teste", value, ran)
