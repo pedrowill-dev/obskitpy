@@ -111,6 +111,8 @@ o que os seus robôs registram. Na aba **Automações** do dash você desenha um
 Nas mensagens você usa variáveis: `{{service}}`, `{{value}}`, `{{window}}`, `{{automation}}`, `{{event}}` e `{{time}}`.
 Para erros, há três a mais, preenchidas com o erro mais recente da janela: `{{erro}}` (tipo e mensagem da exceção), `{{origem}}` (arquivo:função:linha) e `{{trace}}` (o traceback Python, limitado às últimas 1500 letras). Sem erro na janela (ex.: “Automação parada”), ficam vazias.
 
+**Código sempre formatado como código:** `{{trace}}`, `{{erro}}` e `{{origem}}` nunca saem como texto comum. No **Slack** e no **Telegram** o traceback vai num **bloco de código** (e o que é curto, como a origem, em código na linha); no **Teams** vai em fonte monoespaçada; no **e-mail** vai como texto puro. Código que você escrever à mão na mensagem com ``` também funciona no Slack.
+
 ### Explicação do erro por IA (`{{explicacao}}`)
 
 O obskitpy **não vem com IA embutida nem escolhe uma por você**: você usa a IA da sua preferência, com a sua própria chave. A variável `{{explicacao}}` traz 1 ou 2 frases com a causa provável do erro e o que fazer, direto no aviso do Slack, Teams, Telegram ou e-mail. Sem configurar nada, ela fica vazia e o resto funciona igual.

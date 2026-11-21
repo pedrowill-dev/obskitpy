@@ -20,6 +20,7 @@ MAX_NODES, MAX_EDGES = 60, 150
 SEVERITIES = ("info", "warning", "critical")
 SERVICE_FIELD = "resource.attributes.service.name"
 VARIABLES = ("service", "value", "window", "automation", "event", "time", "erro", "origem", "trace", "explicacao")
+CODE_VARS = ("erro", "origem", "trace")  # vão em bloco de código nos canais que suportam
 TRACE_MAX = 1500  # o Slack/Telegram cortam mensagens longas; o fim do traceback é o que importa
 
 
@@ -222,7 +223,13 @@ def breached(ntype: str, config: dict, value: int) -> bool:
 
 def render(template: str, ctx: dict) -> str:
     """Troca {{variavel}} pelo valor. Só as variáveis conhecidas: nada é executado."""
-    return re.sub(r"\{\{\s*(\w+)\s*\}\}", lambda m: str(ctx.get(m.group(1), m.group(0))) if m.group(1) in VARIABLES else m.group(0), template)
+    def value(m):
+        name = m.group(1)
+        if name not in VARIABLES:
+            return m.group(0)
+        text = str(ctx.get(name, m.group(0))).replace(providers.CODE_OPEN, "").replace(providers.CODE_CLOSE, "")  # ninguém forja um bloco
+        return f"{providers.CODE_OPEN}{text}{providers.CODE_CLOSE}" if name in CODE_VARS and text else text
+    return re.sub(r"\{\{\s*(\w+)\s*\}\}", value, template)
 
 
 def _compare(config: dict, ctx: dict) -> bool:

@@ -646,7 +646,7 @@ def test_template_variables_are_whitelisted():
 def test_error_variables_and_latest_error(monkeypatch):
     ctx = automations._context(type("A", (), {"name": "x"})(), {"config": {"service": "s", "window_minutes": 5}}, 2, "disparou",
                                {"erro": "KeyError: 'a'", "origem": "m.py:f:3", "trace": "Traceback..."})
-    assert automations.render("{{erro}} | {{origem}} | {{trace}}", ctx) == "KeyError: 'a' | m.py:f:3 | Traceback..."
+    assert providers.plain(automations.render("{{erro}} | {{origem}} | {{trace}}", ctx)) == "KeyError: 'a' | m.py:f:3 | Traceback..."
     assert automations._context(type("A", (), {"name": "x"})(), {"config": {}}, 0, "e")["trace"] == ""  # sem erro, vazio (não fica {{trace}} cru)
 
     hit = {"hits": {"hits": [{"_source": {"body": {"text": "falhou"}, "attributes": {
@@ -745,3 +745,18 @@ def test_ai_providers_build_the_right_request(monkeypatch):
     local = _ai_settings(ai_key="", ai_model="llama3.2", ai_url="http://localhost:11434/v1/", ai_provider="openai")
     asyncio.run(ai._ask(local, "p"))
     assert seen[-1][0] == "http://localhost:11434/v1/chat/completions" and seen[-1][1] == {} and seen[-1][2]["model"] == "llama3.2"
+
+
+def test_code_goes_in_code_blocks_per_channel():
+    ctx = {"service": "s", "value": 2, "erro": "KeyError: 'a'", "origem": "m.py:f:3", "trace": "Traceback:\n  File \"m.py\", line 3\nKeyError: 'a' ```x```", "explicacao": "Falta a chave."}
+    text = automations.render("{{value}} erros: {{erro}} em {{origem}}\n{{trace}}\n💡 {{explicacao}} {{trace}}{{desconhecida}}", ctx)
+    slack = providers._slack_payload(providers.Message("🔴 {{erro}}".replace("{{erro}}", providers.CODE_OPEN + "x" + providers.CODE_CLOSE), text, "critical"))["text"]
+    assert "*🔴 x*" in slack and "🔴 *🔴" not in slack and "`KeyError: 'a'`" in slack and "`m.py:f:3`" in slack          # um trecho curto vai em linha
+    assert "```\nTraceback:" in slack and slack.count("```") == 4 and "💡 Falta a chave." in slack  # traceback em bloco; ``` do conteúdo não fecha o bloco
+    assert "\x02" not in slack and "{{desconhecida}}" in slack
+    tg = providers._telegram_text(providers.Message("t", text))
+    assert "<pre>Traceback:" in tg and "<code>KeyError: &#x27;a&#x27;</code>" in tg
+    teams = providers._teams_payload(providers.Message("t", text))["attachments"][0]["content"]["body"]
+    assert any(b.get("fontType") == "Monospace" and b["text"].startswith("Traceback:") for b in teams)
+    assert "\x02" not in providers.plain(text) and automations.render("{{trace}}", {"trace": "a\x02b\x03"}) == "\x02ab\x03"  # ninguém forja marcas
+    assert automations.render("[{{trace}}]", {"trace": ""}) == "[]"  # vazio não abre bloco

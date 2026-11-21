@@ -102,22 +102,68 @@ async def _post(url: str, json: dict, secrets: dict) -> Result:
 
 ICON = {"critical": "🔴", "warning": "🟠", "info": "🔵"}
 
+# O `render` marca o que é código (traceback, erro, origem) entre estes caracteres de controle; cada canal os converte
+# para o seu formato (bloco de código no Slack/Telegram, fonte monoespaçada no Teams, texto puro no e-mail).
+CODE_OPEN, CODE_CLOSE = "\x02", "\x03"
+
+
+def split_code(text: str) -> list[tuple[bool, str]]:
+    """Divide o texto em trechos (é_código, conteúdo), na ordem em que aparecem."""
+    parts, pos = [], 0
+    for m in re.finditer(f"{CODE_OPEN}(.*?){CODE_CLOSE}", text, re.S):
+        if m.start() > pos:
+            parts.append((False, text[pos:m.start()]))
+        parts.append((True, m.group(1)))
+        pos = m.end()
+    if pos < len(text):
+        parts.append((False, text[pos:]))
+    return parts
+
+
+def plain(text: str) -> str:
+    return text.replace(CODE_OPEN, "").replace(CODE_CLOSE, "")
+
+
+def _is_block(code: str) -> bool:
+    return "\n" in code or len(code) > 60
+
+
+def to_slack(text: str) -> str:
+    """Código vira bloco (várias linhas ou longo) ou trecho em linha; nunca texto comum."""
+    out = []
+    for is_code, chunk in split_code(text):
+        if not is_code:
+            out.append(chunk)
+            continue
+        chunk = chunk.replace("`", "\u02cb")  # crase dentro do código não pode fechar o bloco
+        out.append(f"```\n{chunk}\n```" if _is_block(chunk) else f"`{chunk}`")
+    return "".join(out)
+
+
+def _icon(m: Message) -> str:
+    """O ícone da gravidade, a menos que o título já comece com ele (evita 🔴 🔴)."""
+    icon = ICON.get(m.severity, "🔵")
+    return "" if plain(m.title).lstrip().startswith(icon) else icon + " "
+
 
 def _telegram_text(m: Message) -> str:
-    lines = [f"{ICON.get(m.severity, '🔵')} <b>{html.escape(m.title)}</b>", html.escape(m.text)]
+    body = "".join((f"<pre>{html.escape(c)}</pre>" if _is_block(c) else f"<code>{html.escape(c)}</code>") if is_code else html.escape(c)
+                   for is_code, c in split_code(m.text))
+    lines = [f"{_icon(m)}<b>{html.escape(plain(m.title))}</b>", body]
     lines += [f"<b>{html.escape(k)}:</b> {html.escape(v)}" for k, v in m.fields]
     return "\n".join(lines)
 
 
 def _slack_payload(m: Message) -> dict:
-    lines = [f"{ICON.get(m.severity, '🔵')} *{m.title}*", m.text] + [f"*{k}:* {v}" for k, v in m.fields]
+    lines = [f"{_icon(m)}*{plain(m.title)}*", to_slack(m.text)] + [f"*{k}:* {plain(v)}" for k, v in m.fields]
     return {"text": "\n".join(lines)}
 
 
 def _teams_payload(m: Message) -> dict:
     color = {"critical": "Attention", "warning": "Warning"}.get(m.severity, "Accent")
-    body = [{"type": "TextBlock", "text": m.title, "weight": "Bolder", "size": "Medium", "color": color, "wrap": True},
-            {"type": "TextBlock", "text": m.text, "wrap": True}]
+    body = [{"type": "TextBlock", "text": plain(m.title), "weight": "Bolder", "size": "Medium", "color": color, "wrap": True},
+            *[{"type": "TextBlock", "text": c.strip("\n"), "wrap": True, **({"fontType": "Monospace"} if is_code else {})}
+              for is_code, c in split_code(m.text) if c.strip()]]
     if m.fields:
         body.append({"type": "FactSet", "facts": [{"title": k, "value": v} for k, v in m.fields]})
     return {"type": "message", "attachments": [{"contentType": "application/vnd.microsoft.card.adaptive", "content": {
@@ -166,7 +212,7 @@ def slack_manifest(redirect_url: str, bot_name: str = "obskitpy") -> dict:
 
 
 async def slack_app_send(config: dict, secrets: dict, target: str, m: Message) -> Result:
-    payload = {"channel": target, "text": "\n".join([f"{ICON.get(m.severity, '🔵')} *{m.title}*", m.text] + [f"*{k}:* {v}" for k, v in m.fields])}
+    payload = {"channel": target, "text": _slack_payload(m)["text"]}
     if config.get("bot_name"):
         payload["username"] = config["bot_name"]
     if config.get("icon_emoji"):
@@ -236,8 +282,8 @@ def _smtp_deliver(config: dict, secrets: dict, to: str | None, m: Message) -> Re
             if not to:
                 return Result(True, "login no servidor SMTP ok (escolha um destino para enviar um e-mail de teste)")
             msg = EmailMessage()
-            msg["Subject"], msg["From"], msg["To"] = f"[obskitpy] {m.title}", config["from_addr"], to
-            msg.set_content("\n".join([m.text] + [f"{k}: {v}" for k, v in m.fields]))
+            msg["Subject"], msg["From"], msg["To"] = f"[obskitpy] {plain(m.title)}", config["from_addr"], to
+            msg.set_content("\n".join([plain(m.text)] + [f"{k}: {v}" for k, v in m.fields]))
             smtp.send_message(msg)
         return Result(True, "e-mail enviado")
     except smtplib.SMTPAuthenticationError:

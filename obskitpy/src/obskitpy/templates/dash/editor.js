@@ -21,9 +21,9 @@
     window: ["A janela de tempo avaliada, em minutos.", () => "10"],
     automation: ["O nome desta automação, como você escreveu no topo do editor.", () => (window.__auto || "Minha automação")],
     event: ["O que aconteceu: disparou, lembrete, normalizou, agendado ou teste.", () => "disparou"],
-    erro: ["O erro mais recente da janela: o tipo da exceção Python e a mensagem.", () => "KeyError: 'results' (resposta da API sem o campo esperado)"],
-    origem: ["Onde o erro nasceu no seu código: arquivo:função:linha.", () => "main.py:buscar_noticias:42"],
-    trace: ["O traceback Python completo do erro mais recente (as últimas linhas, se for grande). Dica: use em mensagens de Slack/e-mail, não em títulos.", () => 'Traceback (most recent call last):\n  File "main.py", line 42, in buscar_noticias\n    dados["results"]\nKeyError: \'results\''],
+    erro: ["O erro mais recente da janela: o tipo da exceção Python e a mensagem. Sai como código (formatado) no Slack, Telegram e Teams.", () => "KeyError: 'results' (resposta da API sem o campo esperado)"],
+    origem: ["Onde o erro nasceu no seu código: arquivo:função:linha. Sai como código (formatado).", () => "main.py:buscar_noticias:42"],
+    trace: ["O traceback Python completo do erro mais recente (as últimas linhas, se for grande). Sai num bloco de código no Slack e no Telegram. Dica: use em mensagens de Slack/e-mail, não em títulos.", () => 'Traceback (most recent call last):\n  File "main.py", line 42, in buscar_noticias\n    dados["results"]\nKeyError: \'results\''],
     explicacao: ["Uma explicação curta, feita pela IA que você configurou, da causa provável do erro e do que fazer. Fica vazia se a IA não estiver ligada. Cada erro diferente é explicado só uma vez (guardado em cache).", () => "A API devolveu 404: o post 9999 não existe. Confira o id antes de chamar."],
     time: ["Data e hora em que o aviso foi gerado.", () => new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", "")],
   };
